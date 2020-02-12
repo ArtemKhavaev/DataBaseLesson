@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<persistence xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_2_0.xsd"
+             version="2.0" xmlns="http://java.sun.com/xml/ns/persistence">
+
+    <persistence-unit name="ormLesson" transaction-type="RESOURCE_LOCAL">
+
+        <class>jpa.entity.TextMessage</class>
+        <class>jpa.entity.Student</class>
+        <class>jpa.entity.Contact</class>
+        <class>jpa.entity.Group</class>
+
+        <properties>
+            <!--строка подключения к бд-->
+            <property name="javax.persistence.jdbc.url"
+                      value="jdbc:postgresql://localhost:5432/ARR"/>
+            <!--логин пользователя бд-->
+            <property name="javax.persistence.jdbc.user" value="Art"/>
+            <!-- пароль пользователя бд-->
+            <property name="javax.persistence.jdbc.password" value="Artem1981@"/>
+            <!--используемый драйвер-->
+            <property name="javax.persistence.jdbc.driver"
+                      value="org.postgresql.Driver"/>
+
+            <property name="eclipselink.logging.level" value="FINE"/>
+            <property name="eclipselink.ddl-generation"
+                      value="drop-and-create-tables"/>
+            <!--            none-->
+            <!--            create-tables-->
+            <!--            настройки для пула соединений-->
+            <property name="eclipselink.connection-pool.default.initial" value="5"/>
+            <property name="eclipselink.connection-pool.default.min" value="3"/>
+            <property name="eclipselink.connection-pool.default.max" value="10"/>
+
+            <!--            отключение кэша-->
+            <property name="eclipcelink.cashe.shared.default" value="false"/>
+            <!--            загрузка файлов с sql-запросом-->
+            <!-- <property name="javax.persistence.sql-Load-script-source" value="META-INF/path_to_sql.sql"/>-->
+       </properties>
+   </persistence-unit>
+</persistence>
