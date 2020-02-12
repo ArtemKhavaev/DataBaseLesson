@@ -1,0 +1,2761 @@
+Index: src/main/java/jpa/repository/Repository.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/repository/Repository.java	(date 1578936775279)
++++ src/main/java/jpa/repository/Repository.java	(date 1578936775279)
+@@ -0,0 +1,17 @@
++package jpa.repository;
++
++import jpa.specification.Specification;
++
++import java.util.List;
++
++public interface Repository<T, PK> {
++    void add(T t); // добавление
++    void update(T t); // обновление
++    void delete(PK pk); // удаление по первичному ключу
++    T getByPk(PK pk); // получение по первичному ключу
++    List<T> getAll(); // получение всех записей
++
++    List<T> getBySpecification(Specification specification);
++
++
++}
+\ No newline at end of file
+Index: src/main/java/jpa/repository/GroupRepository.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/repository/GroupRepository.java	(date 1578938961656)
++++ src/main/java/jpa/repository/GroupRepository.java	(date 1578938961656)
+@@ -0,0 +1,132 @@
++package jpa.repository;
++
++import jpa.entity.Group;
++import jpa.entity.Group_;
++import jpa.entity.Student;
++import jpa.specification.Specification;
++
++import javax.persistence.EntityManager;
++import javax.persistence.Query;
++import javax.persistence.TypedQuery;
++import javax.persistence.criteria.*;
++import java.util.List;
++
++public class GroupRepository implements Repository<Group, Integer> {
++    private EntityManager manager;
++
++    public GroupRepository(EntityManager manager) {
++        this.manager = manager;
++    }
++
++    @Override
++    public void add(Group group) {
++        manager.persist(group); // добавление записи в таблицу
++    }
++
++    @Override
++    public void update(Group group) {
++        manager.merge(group); // обновление существующей записи
++    }
++
++    @Override
++    public void delete(Integer integer) {
++        manager.getTransaction().begin();
++        Group group = getByPk(integer);
++        manager.remove(group); // удаление объекта
++        manager.getTransaction().commit();
++    }
++
++    @Override
++    public Group getByPk(Integer integer) {
++        // получение записи по первичному ключу
++        return manager.find(Group.class, integer);
++    }
++
++    @Override
++    public List<Group> getAll() {
++        /*1. named queries*/
++        /*TypedQuery<Group> query =
++                manager.createNamedQuery("Group.getAll", Group.class);
++        List<Group> groups = query.getResultList();*/
++
++        /*2. JPQL */
++        /*Query query = manager.createQuery("SELECT g FROM Group g");
++        List<Group> groups = (List<Group>) query.getResultList();*/
++
++        /*3. Criteria API*/
++        CriteriaBuilder criteriaBuilder = manager.getCriteriaBuilder();
++        CriteriaQuery<Group> criteriaQuery =
++                criteriaBuilder.createQuery(Group.class);
++        Root<Group> root = criteriaQuery.from(Group.class); // from Group
++        criteriaQuery.select(root);
++
++        TypedQuery<Group> typedQuery = manager.createQuery(criteriaQuery);
++        List<Group> groups = typedQuery.getResultList();
++
++        return groups;
++    }
++
++    public Group getGroupByName(String groupName){
++        /*1. named query*/
++       /* TypedQuery<Group> query =
++                manager.createNamedQuery("Group.findByNAme", Group.class);
++        query.setParameter("groupName", groupName);
++        Group group = query.getSingleResult();*/
++
++        /*2. JPQL */
++       /* TypedQuery<Group> query = manager.createQuery(
++             "SELECT g FROM Group g WHERE g.groupName = :groupName",
++               Group.class);
++        query.setParameter("groupName", groupName);
++        Group group = query.getSingleResult();*/
++
++        /*Criteria API*/
++        CriteriaBuilder criteriaBuilder = manager.getCriteriaBuilder();
++        CriteriaQuery<Group> criteriaQuery =
++                criteriaBuilder.createQuery(Group.class);
++        // блок from
++        Root<Group> root = criteriaQuery.from(Group.class);
++        // блок where
++        Predicate condition =
++                criteriaBuilder.equal(root.get(Group_.groupName), groupName);
++
++        criteriaQuery.select(root).where(condition);
++
++        TypedQuery<Group> query = manager.createQuery(criteriaQuery);
++        Group group = query.getSingleResult();
++
++        return group;
++    }
++
++    // количество студентов в группе
++    public long studentsCount(String groupName){
++        CriteriaBuilder criteriaBuilder = manager.getCriteriaBuilder();
++        CriteriaQuery<Long> criteriaQuery =
++                criteriaBuilder.createQuery(Long.class);
++
++        Root<Group> root = criteriaQuery.from(Group.class);
++
++        Join<Group, Student> groupStudent = root.join(Group_.students);
++
++        Predicate condition =
++                criteriaBuilder.equal(root.get(Group_.groupName), groupName);
++
++        criteriaQuery.select(criteriaBuilder.count(groupStudent))
++                .where(condition)
++                .groupBy(root.get("id")); // Group_.id
++
++        return manager.createQuery(criteriaQuery).getSingleResult();
++    }
++
++    @Override
++    public List<Group> getBySpecification(Specification specification) {
++
++        CriteriaBuilder criteriaBuilder = manager.getCriteriaBuilder();
++        CriteriaQuery<Group> criteriaQuery = criteriaBuilder.createQuery(Group.class);
++        Root<Group> root = criteriaQuery.from(Group.class);
++        Predicate condition = specification.toPredicate(root, criteriaBuilder);
++        criteriaQuery.where(condition);
++        return manager.createQuery(criteriaQuery).getResultList();
++
++    }
++}
+\ No newline at end of file
+Index: src/main/java/jpa/tst/TstMessage.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/tst/TstMessage.java	(date 1578932530388)
++++ src/main/java/jpa/tst/TstMessage.java	(date 1578932530388)
+@@ -0,0 +1,37 @@
++package jpa.tst;
++
++import jpa.entity.TextMessage;
++
++import javax.persistence.EntityManager;
++import javax.persistence.EntityManagerFactory;
++import javax.persistence.Persistence;
++import java.util.GregorianCalendar;
++
++public class TstMessage {
++    public static void main(String[] args) {
++        EntityManagerFactory factory =
++                Persistence.createEntityManagerFactory("ormLesson");
++        EntityManager manager = factory.createEntityManager();
++
++
++        manager.getTransaction().begin();
++
++        // получение
++        TextMessage textMessage = new TextMessage();
++        textMessage.setAuthor("author");
++        textMessage.setText("some text");
++        textMessage.setSent(new GregorianCalendar());
++
++        manager.persist(textMessage);
++
++        manager.getTransaction().commit();
++
++        // получение сообщения
++        TextMessage messageFromDB = manager.find(TextMessage.class, 1);
++        System.out.println(messageFromDB);
++
++        manager.close();
++        factory.close();
++
++    }
++}
+\ No newline at end of file
+Index: src/main/java/jpa/repository/StudentRepository.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/repository/StudentRepository.java	(date 1578937522806)
++++ src/main/java/jpa/repository/StudentRepository.java	(date 1578937522806)
+@@ -0,0 +1,58 @@
++package jpa.repository;
++
++import jpa.entity.Student;
++import jpa.specification.Specification;
++
++import javax.persistence.EntityManager;
++import javax.persistence.criteria.CriteriaBuilder;
++import javax.persistence.criteria.CriteriaQuery;
++import javax.persistence.criteria.Predicate;
++import javax.persistence.criteria.Root;
++import java.util.List;
++
++public class StudentRepository implements Repository<Student, Integer> {
++    private EntityManager manager;
++
++    public StudentRepository(EntityManager manager) {
++        this.manager = manager;
++    }
++
++    @Override
++    public void add(Student student) {
++        manager.persist(student);
++    }
++
++    @Override
++    public void update(Student student) {
++        manager.merge(student);
++    }
++
++    @Override
++    public void delete(Integer integer) {
++
++    }
++
++    @Override
++    public Student getByPk(Integer integer) {
++        return null;
++    }
++
++    @Override
++    public List<Student> getAll() {
++        return null;
++    }
++
++    @Override
++    public List<Student> getBySpecification(Specification specification) {
++        CriteriaBuilder criteriaBuilder = manager.getCriteriaBuilder();
++        CriteriaQuery<Student> criteriaQuery =
++                criteriaBuilder.createQuery(Student.class);
++        Root<Student> root = criteriaQuery.from(Student.class);
++
++        Predicate condition = specification.toPredicate(root, criteriaBuilder);
++
++        criteriaQuery.where(condition);
++
++        return manager.createQuery(criteriaQuery).getResultList();
++    }
++}
+Index: src/main/java/jpa/tst/TstRepository.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/tst/TstRepository.java	(date 1578938961646)
++++ src/main/java/jpa/tst/TstRepository.java	(date 1578938961646)
+@@ -0,0 +1,94 @@
++package jpa.tst;
++
++import jpa.entity.Contact;
++import jpa.entity.Group;
++import jpa.entity.Student;
++import jpa.repository.GroupRepository;
++import jpa.repository.StudentRepository;
++import jpa.specification.StudentWithoutContact;
++
++import javax.persistence.EntityManager;
++import javax.persistence.EntityManagerFactory;
++import javax.persistence.Persistence;
++import java.util.List;
++
++public class TstRepository {
++    public static void main(String[] args) {
++        EntityManagerFactory factory =
++                Persistence.createEntityManagerFactory("ormLesson");
++        EntityManager manager = factory.createEntityManager();
++
++        GroupRepository groupRepository = new GroupRepository(manager);
++        StudentRepository studentRepository = new StudentRepository(manager);
++
++        Group jjd = new Group("JJD", 3, 20000);
++        Group python = new Group("Python", 2, 15000);
++        Group nodeJS = new Group("Node JS", 3, 15000);
++        Group web = new Group("Web Developer", 4, 25000);
++
++        manager.getTransaction().begin();
++        groupRepository.add(jjd);
++        groupRepository.add(python);
++        groupRepository.add(nodeJS);
++        groupRepository.add(web);
++        manager.getTransaction().commit();
++
++        Student ivan = new Student("ivan@mail.ru");
++        Student oleg = new Student("oleg@mail.ru");
++        Student misha = new Student("misha@mail.ru");
++
++        Contact ivanContact = new Contact("Ivan", 16);
++        Contact olegContact = new Contact("Oleg", 27);
++
++        ivanContact.setStudent(ivan);
++        olegContact.setStudent(oleg);
++
++        ivan.setContact(ivanContact);
++        oleg.setContact(olegContact);
++
++        manager.getTransaction().begin();
++        studentRepository.add(ivan);
++        studentRepository.add(oleg);
++        studentRepository.add(misha);
++        manager.getTransaction().commit();
++
++        ivan.getGroups().add(jjd);
++        ivan.getGroups().add(python);
++        oleg.getGroups().add(python);
++        oleg.getGroups().add(nodeJS);
++        misha.getGroups().add(jjd);
++
++        jjd.getStudents().add(ivan);
++        jjd.getStudents().add(misha);
++        python.getStudents().add(ivan);
++        python.getStudents().add(oleg);
++        nodeJS.getStudents().add(oleg);
++
++        manager.getTransaction().begin();
++        studentRepository.update(ivan);
++        studentRepository.update(oleg);
++        studentRepository.update(misha);
++        manager.getTransaction().commit();
++
++
++        System.out.println("получение всех групп");
++        List<Group> groupList = groupRepository.getAll();
++        for (Group group: groupList){
++            System.out.println(group.getGroupName());
++        }
++
++        Group groupByName = groupRepository.getGroupByName("JJD");
++        System.out.println("groupByName: " + groupByName.getDuration());
++
++        System.out.println(groupRepository.studentsCount("JJD"));
++
++        System.out.println("Студенты без контактной информации");
++        List<Student> nullContacts = studentRepository.getBySpecification(new StudentWithoutContact());
++        for (Student student: nullContacts) {
++            System.out.println(student.getEmail());
++        }
++
++        manager.close();
++        factory.close();
++    }
++}
+\ No newline at end of file
+Index: target/classes/META-INF/Select.sql
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/classes/META-INF/Select.sql	(date 1578934024323)
++++ target/classes/META-INF/Select.sql	(date 1578934024323)
+@@ -0,0 +1,101 @@
++-- все записи
++SELECT * FROM author;
++
++-- названия статей по возрастанию дат
++-- ORDER BY DESC - по убыванию
++-- ORDER BY ASC - по возрастанию
++SELECT title, created_on
++FROM article ORDER BY created_on;
++
++-- = < > <= >= !=
++SELECT * FROM article
++WHERE author_id = 2;
++
++-- BETWEEN ... AND ... диапазон
++SELECT title, created_on FROM article
++WHERE EXTRACT(YEAR FROM created_on)
++BETWEEN 2015 AND 2018;
++
++-- AND OR NOT
++SELECT title FROM article
++WHERE author_id = 1
++AND created_on > '2018-12-12';
++
++-- IN(value1, value2, value3)
++SELECT * FROM article
++WHERE author_id IN(2, 3, 12);
++-- NOT IN(value1, value2, value3)
++SELECT * FROM article
++WHERE author_id NOT IN(2, 1, 3);
++
++-- LIKE
++-- Py%
++-- %on
++-- %o%
++SELECT * FROM article
++WHERE text LIKE '%про%';
++
++-- sum avg min max
++SELECT ceil(AVG(age)) as author_age FROM author;
++-- Вложенные select запросы - пользователи с возрастом выше среднего
++SELECT * FROM author
++WHERE age > (SELECT AVG(age) FROM author);
++
++SELECT ceil(MIN(age)) as author_age FROM author;
++-- Вложенные select запросы - пользователи с возрастом выше среднего
++SELECT * FROM author
++WHERE age = (SELECT MIN(age) FROM author);
++
++SELECT ceil(MIN(age)) as author_age FROM author;
++
++SELECT count(title) AS articles_count FROM article;
++
++-- GROUP BY
++SELECT count(article.title)
++AS articles_count, author.name
++FROM author, article
++WHERE author.author_id = article.author_id
++GROUP BY author.author_id;
++
++-- JOIN
++SELECT u.name, a.title
++FROM author u
++INNER JOIN article a
++ON u.author_id = a.author_id;
++-- вместо ON можно использовать
++-- USING(id), если названия столбцов,
++-- по которым таблицы связаны одинаковые
++
++-- LEFT JOIN - позволяет извлекать
++-- данные из таблицы, по возможности
++-- дополняя их данными из другой таблицы
++-- RIGHT JOIN
++SELECT u.name, a.title
++FROM author u
++RIGHT JOIN article a
++ON u.author_id = a.author_id;
++
++SELECT u.name, a.title
++FROM author u
++LEFT JOIN article a
++ON u.author_id = a.author_id;
++
++-- полльзователи,  которые не писали статей
++SELECT u.name
++FROM author u
++LEFT JOIN article a
++ON u.author_id = a.author_id
++WHERE a.title IS NULL;
++
++-- названия статей, из номинации с id 1
++
++-- выбрать название и дату написания статей,
++-- занявших первое место
++
++-- пользователи, чьи статьи заняли первое место
++
++-- названия и год написания
++-- всех статей прошлого года
++
++-- статьи, которые не участвовали в номинациях
++
+Index: src/main/java/base/JDBCLesson.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/base/JDBCLesson.java	(date 1581139292409)
++++ src/main/java/base/JDBCLesson.java	(date 1581139292409)
+@@ -0,0 +1,71 @@
++package base;//package base;
++
++
++
++import java.sql.*;
++
++public class JDBCLesson {
++    static String conStr = "jdbc:postgresql://localhost:5432/ARR";
++    static String login = "Art";
++    static String pwd = "Artem1981@";
++
++    public static void main(String[] args) {
++        try {
++            createTable();
++            insertIntoBook("Книга", 45);
++        } catch (ClassNotFoundException | SQLException e) {
++            e.printStackTrace();
++        }
++    }
++
++    public static void createTable() throws ClassNotFoundException, SQLException {
++        String create = "CREATE TABLE IF NOT EXISTS book(" +
++                "id SERIAL PRIMARY KEY," +
++                "title VARCHAR(50) NOT NULL," +
++                "pageCount INTEGER NOT NULL);";
++        // регистрация драйвера
++        Class.forName("org.postgresql.Driver");
++        try (Connection connection = DriverManager.getConnection(conStr, login, pwd)){
++            try (Statement statement = connection.createStatement()){
++                int result = statement.executeUpdate(create);
++                System.out.println(result);
++            }
++        }
++    }
++
++    public static void insertIntoBook(String title, int pageCount) throws ClassNotFoundException, SQLException {
++        String insert = "INSERT INTO book (title, pageCount) VALUES (?, ?);";
++        String delete = "DELETE * FROM book WHERE id = ?;";
++        Class.forName("org.postgresql.Driver");
++        try (Connection connection =
++                     DriverManager.getConnection(conStr, login, pwd)) {
++            try(PreparedStatement ps = connection.prepareStatement(insert)){
++                ps.setString(1, title);
++                ps.setInt(2, pageCount);
++                int result = ps.executeUpdate();
++//                int result = ps.execute();
++                System.out.println(result);
++            }
++        }
++    }
++
++    public static void getAllBooks() throws ClassNotFoundException, SQLException {
++        String selectAll = "SELECT * FROM book;";
++
++        Class.forName("org.postgresql.Driver");
++        try (Connection connection =
++                     DriverManager.getConnection(conStr, login, pwd)){
++            try(Statement statement = connection.createStatement()){
++                ResultSet resultSet = statement.executeQuery(selectAll);
++                while (resultSet.next()){
++                    String title = resultSet.getString("title");
++                    int pageCount = resultSet.getInt("pageCount");
++                    System.out.println("title = " + title);
++                    System.out.println("pageCount = " + pageCount);
++                }
++            }
++        }
++
++    }
++
++}
+Index: src/main/java/dao/Book.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/dao/Book.java	(date 1577471936074)
++++ src/main/java/dao/Book.java	(date 1577471936074)
+@@ -0,0 +1,32 @@
++package dao;
++
++public class Book {
++    private String title;
++    private int id;
++    private int pageCount;
++
++
++    public String getTitle() {
++        return title;
++    }
++
++    public void setTitle(String title) {
++        this.title = title;
++    }
++
++    public int getId() {
++        return id;
++    }
++
++    public void setId(int id) {
++        this.id = id;
++    }
++
++    public int getPageCount() {
++        return pageCount;
++    }
++
++    public void setPageCount(int pageCount) {
++        this.pageCount = pageCount;
++    }
++}
+Index: target/classes/META-INF/Create.sql
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/classes/META-INF/Create.sql	(date 1578933981127)
++++ target/classes/META-INF/Create.sql	(date 1578933981127)
+@@ -0,0 +1,71 @@
++
++-- СОЗДАНИЕ ТАБЛИЦ
++CREATE TABLE IF NOT EXISTS author(
++   author_id serial PRIMARY KEY,
++   name VARCHAR (50) NOT NULL,
++    age INTEGER NOT NULL
++);
++
++CREATE TABLE IF NOT EXISTS article(
++	article_id serial PRIMARY KEY,
++	title VARCHAR (50) UNIQUE NOT NULL,
++	text TEXT NOT NULL,
++	created_on TIMESTAMP NOT NULL,
++	author_id INTEGER NOT NULL,
++	CONSTRAINT author_article FOREIGN KEY (author_id)
++	REFERENCES author(author_id)
++      ON UPDATE NO ACTION ON DELETE NO ACTION
++);
++
++CREATE TABLE IF NOT EXISTS nomination(
++   nomination_id serial PRIMARY KEY,
++   name VARCHAR (150) NOT NULL
++);
++
++CREATE TYPE rate AS ENUM ('first', 'second', 'third');
++
++CREATE TABLE IF NOT EXISTS nomination_article
++(
++  nomination_id integer NOT NULL,
++  article_id integer NOT NULL,
++  rating rate,
++  PRIMARY KEY (nomination_id, article_id),
++  CONSTRAINT nomination_fk FOREIGN KEY (nomination_id)
++      REFERENCES nomination (nomination_id) MATCH FULL
++      ON UPDATE NO ACTION ON DELETE NO ACTION,
++  CONSTRAINT article_fk FOREIGN KEY (article_id)
++      REFERENCES article (article_id) MATCH FULL
++      ON UPDATE NO ACTION ON DELETE NO ACTION
++);
++
++-- ВСТАВКА ДАННЫХ В ТАБЛИЦУ
++INSERT INTO author (name, age)
++VALUES
++('qwerty', 28),
++('reanno', 46),
++('ivan334', 32),
++('apple', 21),
++('wind23', 23);
++
++INSERT INTO article (title, text, created_on, author_id)
++VALUES
++('Stream API', 'Статья про Stream API', '2017-10-19 10:23', 1),
++('Lambda', 'Статья про Lambda', '2019-03-27 16:33', 1),
++('Java 13', 'Статья про Java 13', '2019-11-28 17:10', 2),
++('Garbage Collectors', 'Статья про GC', '2019-08-07 11:55', 2),
++('Hibernate', 'Статья про Hibernate', '2018-12-01 21:30', 2),
++('Collections API', 'Collections API', '2019-11-22 22:29', 3);
++
++INSERT INTO nomination (name)
++VALUES
++('Java 8'),
++('Базы Данных'),
++('Функциональное Программирование Java');
++
++INSERT INTO nomination_article (nomination_id, article_id, rating)
++VALUES
++(1, 2, 'first'),
++(1, 1, 'third'),
++(2, 5, 'third'),
++(3, 2, 'first'),
++(3, 6, 'third');
+\ No newline at end of file
+Index: src/main/java/dao/BookDao.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/dao/BookDao.java	(date 1577471936094)
++++ src/main/java/dao/BookDao.java	(date 1577471936094)
+@@ -0,0 +1,50 @@
++package dao;
++
++import java.sql.ResultSet;
++import java.sql.SQLException;
++import java.sql.Statement;
++import java.util.List;
++
++public class BookDao implements Dao<Book, Integer> {
++
++
++
++    @Override
++    public List<Book> getAll() {
++        String selectAll = "SELECT * FROM book;";
++        try(Statement st = C3P0DataSource.getConnection().createStatement()) {
++            ResultSet resultSet = st.executeQuery(selectAll);
++            while (resultSet.next()){
++                String title = resultSet.getString("title");
++                int pageCount = resultSet.getInt("pageCount");
++                System.out.println("title = "+ title);
++                System.out.println("pageCount = "+ pageCount);
++            }
++        } catch (SQLException e) {
++            e.printStackTrace();
++        }
++
++
++        return null;
++    }
++
++    @Override
++    public Book getByPK(Integer primaryKey) {
++        return null;
++    }
++
++    @Override
++    public boolean deleteByPK(Integer primaryKey) {
++        return false;
++    }
++
++    @Override
++    public Book update(Book entity) {
++        return null;
++    }
++
++    @Override
++    public Book add(Book entity) {
++        return null;
++    }
++}
+Index: target/classes/META-INF/persistence.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/classes/META-INF/persistence.xml	(date 1578940004977)
++++ target/classes/META-INF/persistence.xml	(date 1578940004977)
+@@ -0,0 +1,41 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<persistence xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++             xsi:schemaLocation="http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_2_0.xsd"
++             version="2.0" xmlns="http://java.sun.com/xml/ns/persistence">
++
++    <persistence-unit name="ormLesson" transaction-type="RESOURCE_LOCAL">
++
++        <class>jpa.entity.TextMessage</class>
++        <class>jpa.entity.Student</class>
++        <class>jpa.entity.Contact</class>
++        <class>jpa.entity.Group</class>
++
++        <properties>
++            <!--строка подключения к бд-->
++            <property name="javax.persistence.jdbc.url"
++                      value="jdbc:postgresql://localhost:5432/ARR"/>
++            <!--логин пользователя бд-->
++            <property name="javax.persistence.jdbc.user" value="Art"/>
++            <!-- пароль пользователя бд-->
++            <property name="javax.persistence.jdbc.password" value="Artem1981@"/>
++            <!--используемый драйвер-->
++            <property name="javax.persistence.jdbc.driver"
++                      value="org.postgresql.Driver"/>
++
++            <property name="eclipselink.logging.level" value="FINE"/>
++            <property name="eclipselink.ddl-generation"
++                      value="drop-and-create-tables"/>
++            <!--            none-->
++            <!--            create-tables-->
++            <!--            настройки для пула соединений-->
++            <property name="eclipselink.connection-pool.default.initial" value="5"/>
++            <property name="eclipselink.connection-pool.default.min" value="3"/>
++            <property name="eclipselink.connection-pool.default.max" value="10"/>
++
++            <!--            отключение кэша-->
++            <property name="eclipcelink.cashe.shared.default" value="false"/>
++            <!--            загрузка файлов с sql-запросом-->
++            <!-- <property name="javax.persistence.sql-Load-script-source" value="META-INF/path_to_sql.sql"/>-->
++       </properties>
++   </persistence-unit>
++</persistence>
+\ No newline at end of file
+Index: src/main/java/dao/C3P0DataSource.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/dao/C3P0DataSource.java	(date 1577471936065)
++++ src/main/java/dao/C3P0DataSource.java	(date 1577471936065)
+@@ -0,0 +1,31 @@
++package dao;
++
++import com.mchange.v2.c3p0.ComboPooledDataSource;
++
++import java.beans.PropertyVetoException;
++import java.sql.Connection;
++import java.sql.SQLException;
++
++public class C3P0DataSource {
++    private static ComboPooledDataSource cpds = new ComboPooledDataSource();
++    static{
++        try {
++            cpds.setDriverClass("org.postgresql.Driver");//аналог Class.forName();
++            cpds.setJdbcUrl("jdbc:postgresql://localhost:5432/ARR");// строка подключения к бд
++            cpds.setUser("Art"); // логин
++            cpds.setPassword("Artem1981@");// пароль
++
++            cpds.setInitialPoolSize(4);// задать количество соединений (3 default)
++            cpds.setMinPoolSize(2);// минимальное значение соединений (1 по умолчанию)
++            cpds.setMaxPoolSize(8);// максимальное кол-во соединений (10 по умолчанию)
++
++        } catch (PropertyVetoException e) {
++            e.printStackTrace();
++        }
++
++    }
++    public static Connection getConnection() throws SQLException {
++        return cpds.getConnection();// возвращает соединение из пула
++
++    }
++}
+Index: src/main/java/dao/Dao.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/dao/Dao.java	(date 1577471936104)
++++ src/main/java/dao/Dao.java	(date 1577471936104)
+@@ -0,0 +1,15 @@
++package dao;
++
++import java.util.List;
++
++public interface Dao <T, PK> {
++    // T тип данных
++    // PK тип данных первичного ключа
++
++    List<T> getAll();// получение всех записей из БД
++    T getByPK(PK primaryKey);// получение записей из БД по первичному ключу
++    boolean deleteByPK(PK primaryKey);// удаление по первичному ключу
++    T update(T entity);//обновление данных в базе
++    T add(T entity);// добавление данных в базу
++
++}
+Index: src/main/java/pool/C3PODataSource.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/pool/C3PODataSource.java	(date 1578933561135)
++++ src/main/java/pool/C3PODataSource.java	(date 1578933561135)
+@@ -0,0 +1,31 @@
++
++package pool;
++
++import com.mchange.v2.c3p0.ComboPooledDataSource;
++
++import java.beans.PropertyVetoException;
++import java.sql.Connection;
++import java.sql.SQLException;
++
++public class C3PODataSource {
++    private static ComboPooledDataSource cpds = new ComboPooledDataSource();
++
++    static {
++        try {
++            cpds.setDriverClass("org.postgresql.Driver"); // Class.forName("org.postgresql.Driver");
++            cpds.setJdbcUrl("jdbc:postgresql://localhost:5432/ARR"); // строка подключения к бд
++            cpds.setUser("Art"); // логин пользователя от бд
++            cpds.setPassword("Artem1981@"); // пароль пользователя от бд
++
++            cpds.setInitialPoolSize(4); // default 3
++            cpds.setMinPoolSize(2); // default 1
++            cpds.setMaxPoolSize(8); // default 10
++        } catch (PropertyVetoException e) {
++            e.printStackTrace();
++        }
++    }
++
++    public static Connection getConnection() throws SQLException {
++        return cpds.getConnection(); // возвращает соединение из пула
++    }
++}
+Index: target/generated-sources/annotations/jpa/entity/Group_.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/generated-sources/annotations/jpa/entity/Group_.java	(date 1581139297423)
++++ target/generated-sources/annotations/jpa/entity/Group_.java	(date 1581139297423)
+@@ -0,0 +1,18 @@
++package jpa.entity;
++
++import javax.annotation.Generated;
++import javax.persistence.metamodel.ListAttribute;
++import javax.persistence.metamodel.SingularAttribute;
++import javax.persistence.metamodel.StaticMetamodel;
++import jpa.entity.Student;
++
++@Generated(value="EclipseLink-2.7.5.v20191016-rNA", date="2020-02-08T08:21:37")
++@StaticMetamodel(Group.class)
++public class Group_ extends BaseIdentify_ {
++
++    public static volatile SingularAttribute<Group, Integer> duration;
++    public static volatile SingularAttribute<Group, String> groupName;
++    public static volatile SingularAttribute<Group, Integer> price;
++    public static volatile ListAttribute<Group, Student> students;
++
++}
+\ No newline at end of file
+Index: target/generated-sources/annotations/jpa/entity/BaseIdentify_.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/generated-sources/annotations/jpa/entity/BaseIdentify_.java	(date 1581139297421)
++++ target/generated-sources/annotations/jpa/entity/BaseIdentify_.java	(date 1581139297421)
+@@ -0,0 +1,13 @@
++package jpa.entity;
++
++import javax.annotation.Generated;
++import javax.persistence.metamodel.SingularAttribute;
++import javax.persistence.metamodel.StaticMetamodel;
++
++@Generated(value="EclipseLink-2.7.5.v20191016-rNA", date="2020-02-08T08:21:37")
++@StaticMetamodel(BaseIdentify.class)
++public abstract class BaseIdentify_ { 
++
++    public static volatile SingularAttribute<BaseIdentify, Integer> id;
++
++}
+\ No newline at end of file
+Index: src/main/java/jpa/specification/GroupByAge.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/specification/GroupByAge.java	(date 1579105147129)
++++ src/main/java/jpa/specification/GroupByAge.java	(date 1579105147129)
+@@ -0,0 +1,21 @@
++package jpa.specification;
++
++import jpa.entity.Group;
++import jpa.entity.Group_;
++import jpa.entity.Student;
++
++import javax.persistence.criteria.*;
++
++public class GroupByAge implements Specification<Group> {
++    private int age;
++
++    public GroupByAge(int age) {
++        this.age = age;
++    }
++
++    @Override
++    public Predicate toPredicate(Root<Group> groupRoot, CriteriaBuilder criteriaBuilder) {
++        Join<Group, Student> groupStudent = groupRoot.join(Group_.students, JoinType.LEFT);
++        return criteriaBuilder.lessThan(groupStudent.get(Student), age);
++    }
++}
+Index: target/generated-sources/annotations/jpa/entity/Student_.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/generated-sources/annotations/jpa/entity/Student_.java	(date 1581139297415)
++++ target/generated-sources/annotations/jpa/entity/Student_.java	(date 1581139297415)
+@@ -0,0 +1,18 @@
++package jpa.entity;
++
++import javax.annotation.Generated;
++import javax.persistence.metamodel.ListAttribute;
++import javax.persistence.metamodel.SingularAttribute;
++import javax.persistence.metamodel.StaticMetamodel;
++import jpa.entity.Contact;
++import jpa.entity.Group;
++
++@Generated(value="EclipseLink-2.7.5.v20191016-rNA", date="2020-02-08T08:21:37")
++@StaticMetamodel(Student.class)
++public class Student_ extends BaseIdentify_ {
++
++    public static volatile SingularAttribute<Student, Contact> contact;
++    public static volatile ListAttribute<Student, Group> groups;
++    public static volatile SingularAttribute<Student, String> email;
++
++}
+\ No newline at end of file
+Index: target/generated-sources/annotations/jpa/entity/Contact_.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/generated-sources/annotations/jpa/entity/Contact_.java	(date 1581139297420)
++++ target/generated-sources/annotations/jpa/entity/Contact_.java	(date 1581139297420)
+@@ -0,0 +1,16 @@
++package jpa.entity;
++
++import javax.annotation.Generated;
++import javax.persistence.metamodel.SingularAttribute;
++import javax.persistence.metamodel.StaticMetamodel;
++import jpa.entity.Student;
++
++@Generated(value="EclipseLink-2.7.5.v20191016-rNA", date="2020-02-08T08:21:37")
++@StaticMetamodel(Contact.class)
++public class Contact_ extends BaseIdentify_ {
++
++    public static volatile SingularAttribute<Contact, Student> student;
++    public static volatile SingularAttribute<Contact, String> name;
++    public static volatile SingularAttribute<Contact, Integer> age;
++
++}
+\ No newline at end of file
+Index: src/main/java/jpa/specification/GroupWithoutStudent.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/specification/GroupWithoutStudent.java	(date 1579105147113)
++++ src/main/java/jpa/specification/GroupWithoutStudent.java	(date 1579105147113)
+@@ -0,0 +1,20 @@
++package jpa.specification;
++
++import jpa.entity.Group;
++import jpa.entity.Group_;
++import jpa.entity.Student;
++
++import javax.persistence.criteria.*;
++
++public class GroupWithoutStudent implements Specification<Group> {
++    @Override
++    public Predicate toPredicate (Root <Group> groupRoot, CriteriaBuilder criteriaBuilder) {
++        // группы в которых нет студентов
++        //"SELECT * FROM group LEFT JOIN student ON.." + "WHERE student.id IS NULL"
++
++        Join<Group, Student> groupStudent = groupRoot.join(Group_.students, JoinType.LEFT);
++        return criteriaBuilder.isNull(groupStudent.get("id"));
++    }
++
++
++}
+Index: src/main/java/jpa/specification/StudentInfoByEmail.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/specification/StudentInfoByEmail.java	(date 1579105147092)
++++ src/main/java/jpa/specification/StudentInfoByEmail.java	(date 1579105147092)
+@@ -0,0 +1,21 @@
++package jpa.specification;
++
++import jpa.entity.Student;
++import jpa.entity.Student_;
++
++import javax.persistence.criteria.CriteriaBuilder;
++import javax.persistence.criteria.Predicate;
++import javax.persistence.criteria.Root;
++
++public class StudentInfoByEmail implements Specification<Student> {
++    private String email;
++
++    public StudentInfoByEmail(String email) {
++        this.email = email;
++    }
++
++    @Override
++    public Predicate toPredicate(Root<Student> studentRoot, CriteriaBuilder criteriaBuilder) {
++        return criteriaBuilder.equal(studentRoot.get(Student_.email), email);
++    }
++}
+Index: target/generated-sources/annotations/jpa/entity/TextMessage_.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- target/generated-sources/annotations/jpa/entity/TextMessage_.java	(date 1581139297418)
++++ target/generated-sources/annotations/jpa/entity/TextMessage_.java	(date 1581139297418)
+@@ -0,0 +1,16 @@
++package jpa.entity;
++
++import java.util.Calendar;
++import javax.annotation.Generated;
++import javax.persistence.metamodel.SingularAttribute;
++import javax.persistence.metamodel.StaticMetamodel;
++
++@Generated(value="EclipseLink-2.7.5.v20191016-rNA", date="2020-02-08T08:21:37")
++@StaticMetamodel(TextMessage.class)
++public class TextMessage_ extends BaseIdentify_ {
++
++    public static volatile SingularAttribute<TextMessage, String> author;
++    public static volatile SingularAttribute<TextMessage, String> text;
++    public static volatile SingularAttribute<TextMessage, Calendar> sent;
++
++}
+\ No newline at end of file
+Index: src/main/java/jpa/specification/StudentWithoutContact.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/specification/StudentWithoutContact.java	(date 1578938961673)
++++ src/main/java/jpa/specification/StudentWithoutContact.java	(date 1578938961673)
+@@ -0,0 +1,16 @@
++package jpa.specification;
++
++import jpa.entity.Contact;
++import jpa.entity.Student;
++import jpa.entity.Student_;
++
++import javax.persistence.criteria.*;
++
++public class StudentWithoutContact implements Specification<Student> {
++    @Override
++    public Predicate toPredicate(Root<Student> studentRoot, CriteriaBuilder criteriaBuilder) {
++        //"SELECT * FROM student LEFT JOIN contact ON..." + "WHERE student.id IS NULL"
++        Join<Student, Contact> studentContact = studentRoot.join(Student_.contact, JoinType.LEFT);
++        return criteriaBuilder.isNull(studentContact.get("id"));
++    }
++}
+Index: src/main/java/jpa/specification/GroupByDuration.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/specification/GroupByDuration.java	(date 1578938961664)
++++ src/main/java/jpa/specification/GroupByDuration.java	(date 1578938961664)
+@@ -0,0 +1,20 @@
++package jpa.specification;
++
++import jpa.entity.Group_;
++
++import javax.persistence.criteria.CriteriaBuilder;
++import javax.persistence.criteria.Predicate;
++import javax.persistence.criteria.Root;
++
++public class GroupByDuration implements Specification {
++    private int duration;
++
++    public GroupByDuration(int duration) {
++        this.duration = duration;
++    }
++
++    @Override
++    public Predicate toPredicate(Root groupRoot, CriteriaBuilder criteriaBuilder) {
++        return criteriaBuilder.greaterThanOrEqualTo(groupRoot.get(Group_.duration), duration);
++    }
++}
+Index: .idea/codeStyles/Project.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/codeStyles/Project.xml	(date 1579535662797)
++++ .idea/codeStyles/Project.xml	(date 1579535662797)
+@@ -0,0 +1,52 @@
++<component name="ProjectCodeStyleConfiguration">
++  <code_scheme name="Project" version="173">
++    <DBN-PSQL>
++      <case-options enabled="true">
++        <option name="KEYWORD_CASE" value="lower" />
++        <option name="FUNCTION_CASE" value="lower" />
++        <option name="PARAMETER_CASE" value="lower" />
++        <option name="DATATYPE_CASE" value="lower" />
++        <option name="OBJECT_CASE" value="preserve" />
++      </case-options>
++      <formatting-settings enabled="false" />
++    </DBN-PSQL>
++    <DBN-SQL>
++      <case-options enabled="true">
++        <option name="KEYWORD_CASE" value="lower" />
++        <option name="FUNCTION_CASE" value="lower" />
++        <option name="PARAMETER_CASE" value="lower" />
++        <option name="DATATYPE_CASE" value="lower" />
++        <option name="OBJECT_CASE" value="preserve" />
++      </case-options>
++      <formatting-settings enabled="false">
++        <option name="STATEMENT_SPACING" value="one_line" />
++        <option name="CLAUSE_CHOP_DOWN" value="chop_down_if_statement_long" />
++        <option name="ITERATION_ELEMENTS_WRAPPING" value="chop_down_if_not_single" />
++      </formatting-settings>
++    </DBN-SQL>
++    <DBN-PSQL>
++      <case-options enabled="true">
++        <option name="KEYWORD_CASE" value="lower" />
++        <option name="FUNCTION_CASE" value="lower" />
++        <option name="PARAMETER_CASE" value="lower" />
++        <option name="DATATYPE_CASE" value="lower" />
++        <option name="OBJECT_CASE" value="preserve" />
++      </case-options>
++      <formatting-settings enabled="false" />
++    </DBN-PSQL>
++    <DBN-SQL>
++      <case-options enabled="true">
++        <option name="KEYWORD_CASE" value="lower" />
++        <option name="FUNCTION_CASE" value="lower" />
++        <option name="PARAMETER_CASE" value="lower" />
++        <option name="DATATYPE_CASE" value="lower" />
++        <option name="OBJECT_CASE" value="preserve" />
++      </case-options>
++      <formatting-settings enabled="false">
++        <option name="STATEMENT_SPACING" value="one_line" />
++        <option name="CLAUSE_CHOP_DOWN" value="chop_down_if_statement_long" />
++        <option name="ITERATION_ELEMENTS_WRAPPING" value="chop_down_if_not_single" />
++      </formatting-settings>
++    </DBN-SQL>
++  </code_scheme>
++</component>
+\ No newline at end of file
+Index: src/main/resources/META-INF/Select.sql
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/resources/META-INF/Select.sql	(date 1578934024323)
++++ src/main/resources/META-INF/Select.sql	(date 1578934024323)
+@@ -0,0 +1,101 @@
++-- все записи
++SELECT * FROM author;
++
++-- названия статей по возрастанию дат
++-- ORDER BY DESC - по убыванию
++-- ORDER BY ASC - по возрастанию
++SELECT title, created_on
++FROM article ORDER BY created_on;
++
++-- = < > <= >= !=
++SELECT * FROM article
++WHERE author_id = 2;
++
++-- BETWEEN ... AND ... диапазон
++SELECT title, created_on FROM article
++WHERE EXTRACT(YEAR FROM created_on)
++BETWEEN 2015 AND 2018;
++
++-- AND OR NOT
++SELECT title FROM article
++WHERE author_id = 1
++AND created_on > '2018-12-12';
++
++-- IN(value1, value2, value3)
++SELECT * FROM article
++WHERE author_id IN(2, 3, 12);
++-- NOT IN(value1, value2, value3)
++SELECT * FROM article
++WHERE author_id NOT IN(2, 1, 3);
++
++-- LIKE
++-- Py%
++-- %on
++-- %o%
++SELECT * FROM article
++WHERE text LIKE '%про%';
++
++-- sum avg min max
++SELECT ceil(AVG(age)) as author_age FROM author;
++-- Вложенные select запросы - пользователи с возрастом выше среднего
++SELECT * FROM author
++WHERE age > (SELECT AVG(age) FROM author);
++
++SELECT ceil(MIN(age)) as author_age FROM author;
++-- Вложенные select запросы - пользователи с возрастом выше среднего
++SELECT * FROM author
++WHERE age = (SELECT MIN(age) FROM author);
++
++SELECT ceil(MIN(age)) as author_age FROM author;
++
++SELECT count(title) AS articles_count FROM article;
++
++-- GROUP BY
++SELECT count(article.title)
++AS articles_count, author.name
++FROM author, article
++WHERE author.author_id = article.author_id
++GROUP BY author.author_id;
++
++-- JOIN
++SELECT u.name, a.title
++FROM author u
++INNER JOIN article a
++ON u.author_id = a.author_id;
++-- вместо ON можно использовать
++-- USING(id), если названия столбцов,
++-- по которым таблицы связаны одинаковые
++
++-- LEFT JOIN - позволяет извлекать
++-- данные из таблицы, по возможности
++-- дополняя их данными из другой таблицы
++-- RIGHT JOIN
++SELECT u.name, a.title
++FROM author u
++RIGHT JOIN article a
++ON u.author_id = a.author_id;
++
++SELECT u.name, a.title
++FROM author u
++LEFT JOIN article a
++ON u.author_id = a.author_id;
++
++-- полльзователи,  которые не писали статей
++SELECT u.name
++FROM author u
++LEFT JOIN article a
++ON u.author_id = a.author_id
++WHERE a.title IS NULL;
++
++-- названия статей, из номинации с id 1
++
++-- выбрать название и дату написания статей,
++-- занявших первое место
++
++-- пользователи, чьи статьи заняли первое место
++
++-- названия и год написания
++-- всех статей прошлого года
++
++-- статьи, которые не участвовали в номинациях
++
+Index: src/main/resources/META-INF/Create.sql
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/resources/META-INF/Create.sql	(date 1578933981127)
++++ src/main/resources/META-INF/Create.sql	(date 1578933981127)
+@@ -0,0 +1,71 @@
++
++-- СОЗДАНИЕ ТАБЛИЦ
++CREATE TABLE IF NOT EXISTS author(
++   author_id serial PRIMARY KEY,
++   name VARCHAR (50) NOT NULL,
++    age INTEGER NOT NULL
++);
++
++CREATE TABLE IF NOT EXISTS article(
++	article_id serial PRIMARY KEY,
++	title VARCHAR (50) UNIQUE NOT NULL,
++	text TEXT NOT NULL,
++	created_on TIMESTAMP NOT NULL,
++	author_id INTEGER NOT NULL,
++	CONSTRAINT author_article FOREIGN KEY (author_id)
++	REFERENCES author(author_id)
++      ON UPDATE NO ACTION ON DELETE NO ACTION
++);
++
++CREATE TABLE IF NOT EXISTS nomination(
++   nomination_id serial PRIMARY KEY,
++   name VARCHAR (150) NOT NULL
++);
++
++CREATE TYPE rate AS ENUM ('first', 'second', 'third');
++
++CREATE TABLE IF NOT EXISTS nomination_article
++(
++  nomination_id integer NOT NULL,
++  article_id integer NOT NULL,
++  rating rate,
++  PRIMARY KEY (nomination_id, article_id),
++  CONSTRAINT nomination_fk FOREIGN KEY (nomination_id)
++      REFERENCES nomination (nomination_id) MATCH FULL
++      ON UPDATE NO ACTION ON DELETE NO ACTION,
++  CONSTRAINT article_fk FOREIGN KEY (article_id)
++      REFERENCES article (article_id) MATCH FULL
++      ON UPDATE NO ACTION ON DELETE NO ACTION
++);
++
++-- ВСТАВКА ДАННЫХ В ТАБЛИЦУ
++INSERT INTO author (name, age)
++VALUES
++('qwerty', 28),
++('reanno', 46),
++('ivan334', 32),
++('apple', 21),
++('wind23', 23);
++
++INSERT INTO article (title, text, created_on, author_id)
++VALUES
++('Stream API', 'Статья про Stream API', '2017-10-19 10:23', 1),
++('Lambda', 'Статья про Lambda', '2019-03-27 16:33', 1),
++('Java 13', 'Статья про Java 13', '2019-11-28 17:10', 2),
++('Garbage Collectors', 'Статья про GC', '2019-08-07 11:55', 2),
++('Hibernate', 'Статья про Hibernate', '2018-12-01 21:30', 2),
++('Collections API', 'Collections API', '2019-11-22 22:29', 3);
++
++INSERT INTO nomination (name)
++VALUES
++('Java 8'),
++('Базы Данных'),
++('Функциональное Программирование Java');
++
++INSERT INTO nomination_article (nomination_id, article_id, rating)
++VALUES
++(1, 2, 'first'),
++(1, 1, 'third'),
++(2, 5, 'third'),
++(3, 2, 'first'),
++(3, 6, 'third');
+\ No newline at end of file
+Index: src/main/java/jpa/specification/Specification.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/specification/Specification.java	(date 1578937413681)
++++ src/main/java/jpa/specification/Specification.java	(date 1578937413681)
+@@ -0,0 +1,9 @@
++package jpa.specification;
++
++import javax.persistence.criteria.CriteriaBuilder;
++import javax.persistence.criteria.Predicate;
++import javax.persistence.criteria.Root;
++
++public interface Specification<T> {
++    Predicate toPredicate(Root<T> tRoot, CriteriaBuilder criteriaBuilder);
++}
+Index: .idea/vcs.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/vcs.xml	(date 1581484611074)
++++ .idea/vcs.xml	(date 1581484611074)
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="VcsDirectoryMappings">
++    <mapping directory="$PROJECT_DIR$" vcs="Git" />
++  </component>
++</project>
+\ No newline at end of file
+Index: .idea/.gitignore
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/.gitignore	(date 1581484598229)
++++ .idea/.gitignore	(date 1581484598229)
+@@ -0,0 +1,2 @@
++# Default ignored files
++/workspace.xml
+\ No newline at end of file
+Index: pom.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- pom.xml	(date 1578932649266)
++++ pom.xml	(date 1578932649266)
+@@ -0,0 +1,110 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project xmlns="http://maven.apache.org/POM/4.0.0"
++         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++    <modelVersion>4.0.0</modelVersion>
++
++
++        <groupId>org.example</groupId>
++        <artifactId>db-lessons</artifactId>
++        <version>1.0-SNAPSHOT</version>
++        <properties>
++            <project.build.directory>target</project.build.directory>
++        </properties>
++        <build>
++            <plugins>
++                <plugin>
++                    <groupId>org.apache.maven.plugins</groupId>
++                    <artifactId>maven-compiler-plugin</artifactId>
++                    <configuration>
++                        <source>7</source>
++                        <target>7</target>
++                    </configuration>
++                </plugin>
++
++                <plugin>
++                    <groupId>org.bsc.maven</groupId>
++                    <artifactId>maven-processor-plugin</artifactId>
++                    <version>2.2.4</version>
++                    <executions>
++                        <execution>
++                            <id>process</id>
++                            <goals>
++                                <goal>process</goal>
++                            </goals>
++                            <phase>generate-sources</phase>
++                            <configuration>
++                                <outputDirectory>${project.build.directory}/generated-sources/metamodel</outputDirectory>
++                                <compilerArguments>
++                                    -Aeclipselink.persistencexml=src/main/resources/META-INF/persistence.xml
++                                </compilerArguments>
++                                <processors>
++                                    <processor>org.eclipse.persistence.internal.jpa.modelgen.CanonicalModelProcessor
++                                    </processor>
++                                </processors>
++                            </configuration>
++                        </execution>
++                    </executions>
++                </plugin>
++            </plugins>
++        </build>
++
++        <dependencies>
++            <dependency>
++                <groupId>org.postgresql</groupId>
++                <artifactId>postgresql</artifactId>
++                <version>42.2.9</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/com.mchange/c3p0 -->
++            <dependency>
++                <groupId>com.mchange</groupId>
++                <artifactId>c3p0</artifactId>
++                <version>0.9.5.5</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/javax.persistence/javax.persistence-api -->
++            <dependency>
++                <groupId>javax.persistence</groupId>
++                <artifactId>javax.persistence-api</artifactId>
++                <version>2.2</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/org.eclipse.persistence/eclipselink -->
++            <dependency>
++                <groupId>org.eclipse.persistence</groupId>
++                <artifactId>eclipselink</artifactId>
++                <version>2.7.5</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/org.projectlombok/lombok -->
++            <dependency>
++                <groupId>org.projectlombok</groupId>
++                <artifactId>lombok</artifactId>
++                <version>1.18.10</version>
++                <scope>provided</scope>
++            </dependency>
++
++            <!-- https://mvnrepository.com/artifact/javax.persistence/javax.persistence-api -->
++            <dependency>
++                <groupId>javax.persistence</groupId>
++                <artifactId>javax.persistence-api</artifactId>
++                <version>2.2</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/org.eclipse.persistence/eclipselink -->
++            <dependency>
++                <groupId>org.eclipse.persistence</groupId>
++                <artifactId>eclipselink</artifactId>
++                <version>2.7.5</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/org.eclipse.persistence/org.eclipse.persistence.jpa.modelgen.processor -->
++            <dependency>
++                <groupId>org.eclipse.persistence</groupId>
++                <artifactId>org.eclipse.persistence.jpa.modelgen.processor</artifactId>
++                <version>2.7.5</version>
++            </dependency>
++            <!-- https://mvnrepository.com/artifact/org.projectlombok/lombok -->
++            <dependency>
++                <groupId>org.projectlombok</groupId>
++                <artifactId>lombok</artifactId>
++                <version>1.18.10</version>
++                <scope>provided</scope>
++            </dependency>
++        </dependencies>
++    </project>
+\ No newline at end of file
+Index: DataBaseLesson.iml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- DataBaseLesson.iml	(date 1578931420938)
++++ DataBaseLesson.iml	(date 1578931420938)
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<module type="JAVA_MODULE" version="4" />
+\ No newline at end of file
+Index: .idea/misc.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/misc.xml	(date 1578931414110)
++++ .idea/misc.xml	(date 1578931414110)
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="ExternalStorageConfigurationManager" enabled="true" />
++  <component name="MavenProjectsManager">
++    <option name="originalFiles">
++      <list>
++        <option value="$PROJECT_DIR$/pom.xml" />
++      </list>
++    </option>
++  </component>
++  <component name="ProjectRootManager" version="2" languageLevel="JDK_13" project-jdk-name="13" project-jdk-type="JavaSDK">
++    <output url="file://$PROJECT_DIR$/out" />
++  </component>
++</project>
+\ No newline at end of file
+Index: .idea/dbnavigator.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/dbnavigator.xml	(date 1578935959767)
++++ .idea/dbnavigator.xml	(date 1578935959767)
+@@ -0,0 +1,456 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="DBNavigator.Project.DataEditorManager">
++    <record-view-column-sorting-type value="BY_INDEX" />
++    <value-preview-text-wrapping value="true" />
++    <value-preview-pinned value="false" />
++  </component>
++  <component name="DBNavigator.Project.DataExportManager">
++    <export-instructions>
++      <create-header value="true" />
++      <quote-values-containing-separator value="true" />
++      <quote-all-values value="false" />
++      <value-separator value="" />
++      <file-name value="" />
++      <file-location value="" />
++      <scope value="GLOBAL" />
++      <destination value="FILE" />
++      <format value="EXCEL" />
++      <charset value="windows-1251" />
++    </export-instructions>
++  </component>
++  <component name="DBNavigator.Project.DatabaseBrowserManager">
++    <autoscroll-to-editor value="false" />
++    <autoscroll-from-editor value="true" />
++    <show-object-properties value="true" />
++    <loaded-nodes />
++  </component>
++  <component name="DBNavigator.Project.DatabaseFileManager">
++    <open-files />
++  </component>
++  <component name="DBNavigator.Project.EditorStateManager">
++    <last-used-providers />
++  </component>
++  <component name="DBNavigator.Project.MethodExecutionManager">
++    <method-browser />
++    <execution-history>
++      <group-entries value="true" />
++      <execution-inputs />
++    </execution-history>
++    <argument-values-cache />
++  </component>
++  <component name="DBNavigator.Project.ObjectDependencyManager">
++    <last-used-dependency-type value="INCOMING" />
++  </component>
++  <component name="DBNavigator.Project.ObjectQuickFilterManager">
++    <last-used-operator value="EQUAL" />
++    <filters />
++  </component>
++  <component name="DBNavigator.Project.ScriptExecutionManager" clear-outputs="true">
++    <recently-used-interfaces />
++  </component>
++  <component name="DBNavigator.Project.Settings">
++    <connections />
++    <browser-settings>
++      <general>
++        <display-mode value="TABBED" />
++        <navigation-history-size value="100" />
++        <show-object-details value="false" />
++      </general>
++      <filters>
++        <object-type-filter>
++          <object-type name="SCHEMA" enabled="true" />
++          <object-type name="USER" enabled="true" />
++          <object-type name="ROLE" enabled="true" />
++          <object-type name="PRIVILEGE" enabled="true" />
++          <object-type name="CHARSET" enabled="true" />
++          <object-type name="TABLE" enabled="true" />
++          <object-type name="VIEW" enabled="true" />
++          <object-type name="MATERIALIZED_VIEW" enabled="true" />
++          <object-type name="NESTED_TABLE" enabled="true" />
++          <object-type name="COLUMN" enabled="true" />
++          <object-type name="INDEX" enabled="true" />
++          <object-type name="CONSTRAINT" enabled="true" />
++          <object-type name="DATASET_TRIGGER" enabled="true" />
++          <object-type name="DATABASE_TRIGGER" enabled="true" />
++          <object-type name="SYNONYM" enabled="true" />
++          <object-type name="SEQUENCE" enabled="true" />
++          <object-type name="PROCEDURE" enabled="true" />
++          <object-type name="FUNCTION" enabled="true" />
++          <object-type name="PACKAGE" enabled="true" />
++          <object-type name="TYPE" enabled="true" />
++          <object-type name="TYPE_ATTRIBUTE" enabled="true" />
++          <object-type name="ARGUMENT" enabled="true" />
++          <object-type name="DIMENSION" enabled="true" />
++          <object-type name="CLUSTER" enabled="true" />
++          <object-type name="DBLINK" enabled="true" />
++        </object-type-filter>
++      </filters>
++      <sorting>
++        <object-type name="COLUMN" sorting-type="NAME" />
++        <object-type name="FUNCTION" sorting-type="NAME" />
++        <object-type name="PROCEDURE" sorting-type="NAME" />
++        <object-type name="ARGUMENT" sorting-type="POSITION" />
++      </sorting>
++      <default-editors>
++        <object-type name="VIEW" editor-type="SELECTION" />
++        <object-type name="PACKAGE" editor-type="SELECTION" />
++        <object-type name="TYPE" editor-type="SELECTION" />
++      </default-editors>
++    </browser-settings>
++    <navigation-settings>
++      <lookup-filters>
++        <lookup-objects>
++          <object-type name="SCHEMA" enabled="true" />
++          <object-type name="USER" enabled="false" />
++          <object-type name="ROLE" enabled="false" />
++          <object-type name="PRIVILEGE" enabled="false" />
++          <object-type name="CHARSET" enabled="false" />
++          <object-type name="TABLE" enabled="true" />
++          <object-type name="VIEW" enabled="true" />
++          <object-type name="MATERIALIZED VIEW" enabled="true" />
++          <object-type name="NESTED TABLE" enabled="false" />
++          <object-type name="COLUMN" enabled="false" />
++          <object-type name="INDEX" enabled="true" />
++          <object-type name="CONSTRAINT" enabled="true" />
++          <object-type name="DATASET TRIGGER" enabled="true" />
++          <object-type name="DATABASE TRIGGER" enabled="true" />
++          <object-type name="SYNONYM" enabled="false" />
++          <object-type name="SEQUENCE" enabled="true" />
++          <object-type name="PROCEDURE" enabled="true" />
++          <object-type name="FUNCTION" enabled="true" />
++          <object-type name="PACKAGE" enabled="true" />
++          <object-type name="TYPE" enabled="true" />
++          <object-type name="TYPE ATTRIBUTE" enabled="false" />
++          <object-type name="ARGUMENT" enabled="false" />
++          <object-type name="DIMENSION" enabled="false" />
++          <object-type name="CLUSTER" enabled="false" />
++          <object-type name="DBLINK" enabled="true" />
++        </lookup-objects>
++        <force-database-load value="false" />
++        <prompt-connection-selection value="true" />
++        <prompt-schema-selection value="true" />
++      </lookup-filters>
++    </navigation-settings>
++    <dataset-grid-settings>
++      <general>
++        <enable-zooming value="true" />
++        <enable-column-tooltip value="true" />
++      </general>
++      <sorting>
++        <nulls-first value="true" />
++        <max-sorting-columns value="4" />
++      </sorting>
++      <tracking-columns>
++        <columnNames value="" />
++        <visible value="true" />
++        <editable value="false" />
++      </tracking-columns>
++    </dataset-grid-settings>
++    <dataset-editor-settings>
++      <text-editor-popup>
++        <active value="false" />
++        <active-if-empty value="false" />
++        <data-length-threshold value="100" />
++        <popup-delay value="1000" />
++      </text-editor-popup>
++      <values-actions-popup>
++        <show-popup-button value="true" />
++        <element-count-threshold value="1000" />
++        <data-length-threshold value="250" />
++      </values-actions-popup>
++      <general>
++        <fetch-block-size value="100" />
++        <fetch-timeout value="30" />
++        <trim-whitespaces value="true" />
++        <convert-empty-strings-to-null value="true" />
++        <select-content-on-cell-edit value="true" />
++        <large-value-preview-active value="true" />
++      </general>
++      <filters>
++        <prompt-filter-dialog value="true" />
++        <default-filter-type value="BASIC" />
++      </filters>
++      <qualified-text-editor text-length-threshold="300">
++        <content-types>
++          <content-type name="Text" enabled="true" />
++          <content-type name="Properties" enabled="true" />
++          <content-type name="XML" enabled="true" />
++          <content-type name="DTD" enabled="true" />
++          <content-type name="HTML" enabled="true" />
++          <content-type name="XHTML" enabled="true" />
++          <content-type name="Java" enabled="true" />
++          <content-type name="SQL" enabled="true" />
++          <content-type name="PL/SQL" enabled="true" />
++          <content-type name="Groovy" enabled="true" />
++          <content-type name="AIDL" enabled="true" />
++          <content-type name="YAML" enabled="true" />
++          <content-type name="Manifest" enabled="true" />
++        </content-types>
++      </qualified-text-editor>
++      <record-navigation>
++        <navigation-target value="VIEWER" />
++      </record-navigation>
++    </dataset-editor-settings>
++    <code-editor-settings>
++      <general>
++        <show-object-navigation-gutter value="false" />
++        <show-spec-declaration-navigation-gutter value="true" />
++        <enable-spellchecking value="true" />
++        <enable-reference-spellchecking value="false" />
++      </general>
++      <confirmations>
++        <save-changes value="false" />
++        <revert-changes value="true" />
++      </confirmations>
++    </code-editor-settings>
++    <code-completion-settings>
++      <filters>
++        <basic-filter>
++          <filter-element type="RESERVED_WORD" id="keyword" selected="true" />
++          <filter-element type="RESERVED_WORD" id="function" selected="true" />
++          <filter-element type="RESERVED_WORD" id="parameter" selected="true" />
++          <filter-element type="RESERVED_WORD" id="datatype" selected="true" />
++          <filter-element type="RESERVED_WORD" id="exception" selected="true" />
++          <filter-element type="OBJECT" id="schema" selected="true" />
++          <filter-element type="OBJECT" id="role" selected="true" />
++          <filter-element type="OBJECT" id="user" selected="true" />
++          <filter-element type="OBJECT" id="privilege" selected="true" />
++          <user-schema>
++            <filter-element type="OBJECT" id="table" selected="true" />
++            <filter-element type="OBJECT" id="view" selected="true" />
++            <filter-element type="OBJECT" id="materialized view" selected="true" />
++            <filter-element type="OBJECT" id="index" selected="true" />
++            <filter-element type="OBJECT" id="constraint" selected="true" />
++            <filter-element type="OBJECT" id="trigger" selected="true" />
++            <filter-element type="OBJECT" id="synonym" selected="false" />
++            <filter-element type="OBJECT" id="sequence" selected="true" />
++            <filter-element type="OBJECT" id="procedure" selected="true" />
++            <filter-element type="OBJECT" id="function" selected="true" />
++            <filter-element type="OBJECT" id="package" selected="true" />
++            <filter-element type="OBJECT" id="type" selected="true" />
++            <filter-element type="OBJECT" id="dimension" selected="true" />
++            <filter-element type="OBJECT" id="cluster" selected="true" />
++            <filter-element type="OBJECT" id="dblink" selected="true" />
++          </user-schema>
++          <public-schema>
++            <filter-element type="OBJECT" id="table" selected="false" />
++            <filter-element type="OBJECT" id="view" selected="false" />
++            <filter-element type="OBJECT" id="materialized view" selected="false" />
++            <filter-element type="OBJECT" id="index" selected="false" />
++            <filter-element type="OBJECT" id="constraint" selected="false" />
++            <filter-element type="OBJECT" id="trigger" selected="false" />
++            <filter-element type="OBJECT" id="synonym" selected="false" />
++            <filter-element type="OBJECT" id="sequence" selected="false" />
++            <filter-element type="OBJECT" id="procedure" selected="false" />
++            <filter-element type="OBJECT" id="function" selected="false" />
++            <filter-element type="OBJECT" id="package" selected="false" />
++            <filter-element type="OBJECT" id="type" selected="false" />
++            <filter-element type="OBJECT" id="dimension" selected="false" />
++            <filter-element type="OBJECT" id="cluster" selected="false" />
++            <filter-element type="OBJECT" id="dblink" selected="false" />
++          </public-schema>
++          <any-schema>
++            <filter-element type="OBJECT" id="table" selected="true" />
++            <filter-element type="OBJECT" id="view" selected="true" />
++            <filter-element type="OBJECT" id="materialized view" selected="true" />
++            <filter-element type="OBJECT" id="index" selected="true" />
++            <filter-element type="OBJECT" id="constraint" selected="true" />
++            <filter-element type="OBJECT" id="trigger" selected="true" />
++            <filter-element type="OBJECT" id="synonym" selected="true" />
++            <filter-element type="OBJECT" id="sequence" selected="true" />
++            <filter-element type="OBJECT" id="procedure" selected="true" />
++            <filter-element type="OBJECT" id="function" selected="true" />
++            <filter-element type="OBJECT" id="package" selected="true" />
++            <filter-element type="OBJECT" id="type" selected="true" />
++            <filter-element type="OBJECT" id="dimension" selected="true" />
++            <filter-element type="OBJECT" id="cluster" selected="true" />
++            <filter-element type="OBJECT" id="dblink" selected="true" />
++          </any-schema>
++        </basic-filter>
++        <extended-filter>
++          <filter-element type="RESERVED_WORD" id="keyword" selected="true" />
++          <filter-element type="RESERVED_WORD" id="function" selected="true" />
++          <filter-element type="RESERVED_WORD" id="parameter" selected="true" />
++          <filter-element type="RESERVED_WORD" id="datatype" selected="true" />
++          <filter-element type="RESERVED_WORD" id="exception" selected="true" />
++          <filter-element type="OBJECT" id="schema" selected="true" />
++          <filter-element type="OBJECT" id="user" selected="true" />
++          <filter-element type="OBJECT" id="role" selected="true" />
++          <filter-element type="OBJECT" id="privilege" selected="true" />
++          <user-schema>
++            <filter-element type="OBJECT" id="table" selected="true" />
++            <filter-element type="OBJECT" id="view" selected="true" />
++            <filter-element type="OBJECT" id="materialized view" selected="true" />
++            <filter-element type="OBJECT" id="index" selected="true" />
++            <filter-element type="OBJECT" id="constraint" selected="true" />
++            <filter-element type="OBJECT" id="trigger" selected="true" />
++            <filter-element type="OBJECT" id="synonym" selected="true" />
++            <filter-element type="OBJECT" id="sequence" selected="true" />
++            <filter-element type="OBJECT" id="procedure" selected="true" />
++            <filter-element type="OBJECT" id="function" selected="true" />
++            <filter-element type="OBJECT" id="package" selected="true" />
++            <filter-element type="OBJECT" id="type" selected="true" />
++            <filter-element type="OBJECT" id="dimension" selected="true" />
++            <filter-element type="OBJECT" id="cluster" selected="true" />
++            <filter-element type="OBJECT" id="dblink" selected="true" />
++          </user-schema>
++          <public-schema>
++            <filter-element type="OBJECT" id="table" selected="true" />
++            <filter-element type="OBJECT" id="view" selected="true" />
++            <filter-element type="OBJECT" id="materialized view" selected="true" />
++            <filter-element type="OBJECT" id="index" selected="true" />
++            <filter-element type="OBJECT" id="constraint" selected="true" />
++            <filter-element type="OBJECT" id="trigger" selected="true" />
++            <filter-element type="OBJECT" id="synonym" selected="true" />
++            <filter-element type="OBJECT" id="sequence" selected="true" />
++            <filter-element type="OBJECT" id="procedure" selected="true" />
++            <filter-element type="OBJECT" id="function" selected="true" />
++            <filter-element type="OBJECT" id="package" selected="true" />
++            <filter-element type="OBJECT" id="type" selected="true" />
++            <filter-element type="OBJECT" id="dimension" selected="true" />
++            <filter-element type="OBJECT" id="cluster" selected="true" />
++            <filter-element type="OBJECT" id="dblink" selected="true" />
++          </public-schema>
++          <any-schema>
++            <filter-element type="OBJECT" id="table" selected="true" />
++            <filter-element type="OBJECT" id="view" selected="true" />
++            <filter-element type="OBJECT" id="materialized view" selected="true" />
++            <filter-element type="OBJECT" id="index" selected="true" />
++            <filter-element type="OBJECT" id="constraint" selected="true" />
++            <filter-element type="OBJECT" id="trigger" selected="true" />
++            <filter-element type="OBJECT" id="synonym" selected="true" />
++            <filter-element type="OBJECT" id="sequence" selected="true" />
++            <filter-element type="OBJECT" id="procedure" selected="true" />
++            <filter-element type="OBJECT" id="function" selected="true" />
++            <filter-element type="OBJECT" id="package" selected="true" />
++            <filter-element type="OBJECT" id="type" selected="true" />
++            <filter-element type="OBJECT" id="dimension" selected="true" />
++            <filter-element type="OBJECT" id="cluster" selected="true" />
++            <filter-element type="OBJECT" id="dblink" selected="true" />
++          </any-schema>
++        </extended-filter>
++      </filters>
++      <sorting enabled="true">
++        <sorting-element type="RESERVED_WORD" id="keyword" />
++        <sorting-element type="RESERVED_WORD" id="datatype" />
++        <sorting-element type="OBJECT" id="column" />
++        <sorting-element type="OBJECT" id="table" />
++        <sorting-element type="OBJECT" id="view" />
++        <sorting-element type="OBJECT" id="materialized view" />
++        <sorting-element type="OBJECT" id="index" />
++        <sorting-element type="OBJECT" id="constraint" />
++        <sorting-element type="OBJECT" id="trigger" />
++        <sorting-element type="OBJECT" id="synonym" />
++        <sorting-element type="OBJECT" id="sequence" />
++        <sorting-element type="OBJECT" id="procedure" />
++        <sorting-element type="OBJECT" id="function" />
++        <sorting-element type="OBJECT" id="package" />
++        <sorting-element type="OBJECT" id="type" />
++        <sorting-element type="OBJECT" id="dimension" />
++        <sorting-element type="OBJECT" id="cluster" />
++        <sorting-element type="OBJECT" id="dblink" />
++        <sorting-element type="OBJECT" id="schema" />
++        <sorting-element type="OBJECT" id="role" />
++        <sorting-element type="OBJECT" id="user" />
++        <sorting-element type="RESERVED_WORD" id="function" />
++        <sorting-element type="RESERVED_WORD" id="parameter" />
++      </sorting>
++      <format>
++        <enforce-code-style-case value="true" />
++      </format>
++    </code-completion-settings>
++    <execution-engine-settings>
++      <statement-execution>
++        <fetch-block-size value="100" />
++        <execution-timeout value="20" />
++        <debug-execution-timeout value="600" />
++        <focus-result value="false" />
++        <prompt-execution value="false" />
++      </statement-execution>
++      <script-execution>
++        <command-line-interfaces />
++        <execution-timeout value="300" />
++      </script-execution>
++      <method-execution>
++        <execution-timeout value="30" />
++        <debug-execution-timeout value="600" />
++        <parameter-history-size value="10" />
++      </method-execution>
++    </execution-engine-settings>
++    <operation-settings>
++      <transactions>
++        <uncommitted-changes>
++          <on-project-close value="ASK" />
++          <on-disconnect value="ASK" />
++          <on-autocommit-toggle value="ASK" />
++        </uncommitted-changes>
++        <multiple-uncommitted-changes>
++          <on-commit value="ASK" />
++          <on-rollback value="ASK" />
++        </multiple-uncommitted-changes>
++      </transactions>
++      <session-browser>
++        <disconnect-session value="ASK" />
++        <kill-session value="ASK" />
++        <reload-on-filter-change value="false" />
++      </session-browser>
++      <compiler>
++        <compile-type value="KEEP" />
++        <compile-dependencies value="ASK" />
++        <always-show-controls value="false" />
++      </compiler>
++      <debugger>
++        <debugger-type value="ASK" />
++        <use-generic-runners value="true" />
++      </debugger>
++    </operation-settings>
++    <ddl-file-settings>
++      <extensions>
++        <mapping file-type-id="VIEW" extensions="vw" />
++        <mapping file-type-id="TRIGGER" extensions="trg" />
++        <mapping file-type-id="PROCEDURE" extensions="prc" />
++        <mapping file-type-id="FUNCTION" extensions="fnc" />
++        <mapping file-type-id="PACKAGE" extensions="pkg" />
++        <mapping file-type-id="PACKAGE_SPEC" extensions="pks" />
++        <mapping file-type-id="PACKAGE_BODY" extensions="pkb" />
++        <mapping file-type-id="TYPE" extensions="tpe" />
++        <mapping file-type-id="TYPE_SPEC" extensions="tps" />
++        <mapping file-type-id="TYPE_BODY" extensions="tpb" />
++      </extensions>
++      <general>
++        <lookup-ddl-files value="true" />
++        <create-ddl-files value="false" />
++        <synchronize-ddl-files value="true" />
++        <use-qualified-names value="false" />
++        <make-scripts-rerunnable value="true" />
++      </general>
++    </ddl-file-settings>
++    <general-settings>
++      <regional-settings>
++        <date-format value="MEDIUM" />
++        <number-format value="UNGROUPED" />
++        <locale value="SYSTEM_DEFAULT" />
++        <use-custom-formats value="false" />
++      </regional-settings>
++      <environment>
++        <environment-types>
++          <environment-type id="development" name="Development" description="Development environment" color="-2430209/-12296320" readonly-code="false" readonly-data="false" />
++          <environment-type id="integration" name="Integration" description="Integration environment" color="-2621494/-12163514" readonly-code="true" readonly-data="false" />
++          <environment-type id="production" name="Production" description="Productive environment" color="-11574/-10271420" readonly-code="true" readonly-data="true" />
++          <environment-type id="other" name="Other" description="" color="-1576/-10724543" readonly-code="false" readonly-data="false" />
++        </environment-types>
++        <visibility-settings>
++          <connection-tabs value="true" />
++          <dialog-headers value="true" />
++          <object-editor-tabs value="true" />
++          <script-editor-tabs value="false" />
++          <execution-result-tabs value="true" />
++        </visibility-settings>
++      </environment>
++    </general-settings>
++  </component>
++  <component name="DBNavigator.Project.StatementExecutionManager">
++    <execution-variables />
++  </component>
++</project>
+\ No newline at end of file
+Index: .idea/codeStyles/codeStyleConfig.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/codeStyles/codeStyleConfig.xml	(date 1578931414123)
++++ .idea/codeStyles/codeStyleConfig.xml	(date 1578931414123)
+@@ -0,0 +1,5 @@
++<component name="ProjectCodeStyleConfiguration">
++  <state>
++    <option name="PREFERRED_PROJECT_CODE_STYLE" value="Default" />
++  </state>
++</component>
+\ No newline at end of file
+Index: .idea/compiler.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- .idea/compiler.xml	(date 1581484491017)
++++ .idea/compiler.xml	(date 1581484491017)
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project version="4">
++  <component name="CompilerConfiguration">
++    <annotationProcessing>
++      <profile name="Maven default annotation processors profile" enabled="true">
++        <sourceOutputDir name="target/generated-sources/annotations" />
++        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
++        <outputRelativeToContentRoot value="true" />
++        <module name="DataBaseLesson" />
++      </profile>
++    </annotationProcessing>
++  </component>
++</project>
+\ No newline at end of file
+Index: src/main/resources/META-INF/persistence.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/resources/META-INF/persistence.xml	(date 1578940004977)
++++ src/main/resources/META-INF/persistence.xml	(date 1578940004977)
+@@ -0,0 +1,41 @@
++<?xml version="1.0" encoding="UTF-8" ?>
++<persistence xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++             xsi:schemaLocation="http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_2_0.xsd"
++             version="2.0" xmlns="http://java.sun.com/xml/ns/persistence">
++
++    <persistence-unit name="ormLesson" transaction-type="RESOURCE_LOCAL">
++
++        <class>jpa.entity.TextMessage</class>
++        <class>jpa.entity.Student</class>
++        <class>jpa.entity.Contact</class>
++        <class>jpa.entity.Group</class>
++
++        <properties>
++            <!--строка подключения к бд-->
++            <property name="javax.persistence.jdbc.url"
++                      value="jdbc:postgresql://localhost:5432/ARR"/>
++            <!--логин пользователя бд-->
++            <property name="javax.persistence.jdbc.user" value="Art"/>
++            <!-- пароль пользователя бд-->
++            <property name="javax.persistence.jdbc.password" value="Artem1981@"/>
++            <!--используемый драйвер-->
++            <property name="javax.persistence.jdbc.driver"
++                      value="org.postgresql.Driver"/>
++
++            <property name="eclipselink.logging.level" value="FINE"/>
++            <property name="eclipselink.ddl-generation"
++                      value="drop-and-create-tables"/>
++            <!--            none-->
++            <!--            create-tables-->
++            <!--            настройки для пула соединений-->
++            <property name="eclipselink.connection-pool.default.initial" value="5"/>
++            <property name="eclipselink.connection-pool.default.min" value="3"/>
++            <property name="eclipselink.connection-pool.default.max" value="10"/>
++
++            <!--            отключение кэша-->
++            <property name="eclipcelink.cashe.shared.default" value="false"/>
++            <!--            загрузка файлов с sql-запросом-->
++            <!-- <property name="javax.persistence.sql-Load-script-source" value="META-INF/path_to_sql.sql"/>-->
++       </properties>
++   </persistence-unit>
++</persistence>
+\ No newline at end of file
+Index: src/main/java/jpa/entity/BaseIdentify.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/entity/BaseIdentify.java	(date 1578931904070)
++++ src/main/java/jpa/entity/BaseIdentify.java	(date 1578931904070)
+@@ -0,0 +1,22 @@
++
++package jpa.entity;
++
++import lombok.Getter;
++import lombok.Setter;
++
++import javax.persistence.*;
++
++@MappedSuperclass
++public abstract class BaseIdentify {
++//    @TableGenerator(name = "tgenerator", initialValue = 1)
++//    @GeneratedValue(strategy = GenerationType.TABLE, generator = "tgenerator")
++
++//    @SequenceGenerator(name = "sgenerator", initialValue = 1)
++//    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "sgenerator")
++
++    @Getter
++    @Setter
++    @Id
++    @GeneratedValue(strategy = GenerationType.AUTO)
++    private int id;
++}
+\ No newline at end of file
+Index: src/main/java/jpa/entity/Group.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/entity/Group.java	(date 1578932078289)
++++ src/main/java/jpa/entity/Group.java	(date 1578932078289)
+@@ -0,0 +1,38 @@
++package jpa.entity;
++
++import lombok.*;
++
++import javax.persistence.*;
++import java.util.ArrayList;
++import java.util.List;
++
++@Entity
++@Table(name = "ifmo_group")
++@NoArgsConstructor
++@RequiredArgsConstructor
++@NamedQueries({
++        @NamedQuery(name = "Group.getAll", query = "SELECT g FROM Group g"),
++        @NamedQuery(name = "Group.findByNAme",
++                query = "SELECT g FROM Group g WHERE g.groupName = :groupName")
++})
++public class Group extends BaseIdentify{
++    @Getter
++    @Setter
++    @NonNull
++    private String groupName;
++
++    @Getter
++    @Setter
++    @NonNull
++    private int duration;
++
++    @Getter
++    @Setter
++    @NonNull
++    private int price;
++
++    @Getter
++    @Setter
++    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "groups")
++    private List<Student> students = new ArrayList<>();
++}
+Index: src/main/java/jpa/entity/Contact.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/entity/Contact.java	(date 1578931994160)
++++ src/main/java/jpa/entity/Contact.java	(date 1578931994160)
+@@ -0,0 +1,26 @@
++package jpa.entity;
++
++import lombok.*;
++
++import javax.persistence.*;
++
++@Entity
++@Table(name = "student_contact")
++@NoArgsConstructor
++@RequiredArgsConstructor
++public class Contact extends BaseIdentify {
++    @Getter
++    @Setter
++    @NonNull
++    private String name;
++    @Getter
++    @Setter
++    @NonNull
++    private int age;
++
++    @Getter
++    @Setter
++    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
++    @JoinColumn(name = "student_id", referencedColumnName = "id")
++    private Student student;
++}
+\ No newline at end of file
+Index: src/main/java/jpa/entity/TextMessage.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/entity/TextMessage.java	(date 1578932227241)
++++ src/main/java/jpa/entity/TextMessage.java	(date 1578932227241)
+@@ -0,0 +1,28 @@
++package jpa.entity;
++
++import lombok.Getter;
++import lombok.Setter;
++import lombok.ToString;
++
++import javax.persistence.*;
++import java.util.Calendar;
++
++@Entity
++@Table(name = "message")
++@ToString
++public class TextMessage extends BaseIdentify{
++
++    @Getter
++    @Setter
++    String author; //    @Column(name = "new_name" и тд)
++
++    @Getter
++    @Setter
++    String text;
++
++    @Getter
++    @Setter
++    @Temporal(TemporalType.TIMESTAMP)
++    private Calendar sent;
++
++}
+Index: src/main/java/jpa/entity/Student.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/jpa/entity/Student.java	(date 1578940004992)
++++ src/main/java/jpa/entity/Student.java	(date 1578940004992)
+@@ -0,0 +1,39 @@
++package jpa.entity;
++
++import lombok.*;
++import org.eclipse.persistence.annotations.Cache;
++import org.eclipse.persistence.annotations.CacheCoordinationType;
++import org.eclipse.persistence.annotations.CacheType;
++
++import javax.persistence.*;
++import java.util.ArrayList;
++import java.util.List;
++
++@Entity
++@NoArgsConstructor
++@RequiredArgsConstructor
++@Cache(
++        type = CacheType.SOFT,
++        expiry = 360000, //6 min
++        size = 64000
++)
++public class Student extends BaseIdentify {
++
++    @Getter
++    @Setter
++    @NonNull
++    private String email;
++
++    @Getter
++    @Setter
++    @OneToOne(cascade = CascadeType.ALL, mappedBy = "student")
++    private Contact contact;
++
++    @Getter
++    @Setter
++    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
++    @JoinTable(name = "student_group",
++            joinColumns = @JoinColumn(name = "student_id"),
++            inverseJoinColumns = @JoinColumn(name = "group_id"))
++    private List<Group> groups = new ArrayList<>();
++}
+\ No newline at end of file
+diff --git target/classes/dao/BookDao.class target/classes/dao/BookDao.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..d597065a67e022fff7ddd5020338d9634714bee8
+GIT binary patch
+literal 2797
+zc$|$@TXz#x6#h<<cG7f8OL_yj1;v`)C|X1yr9w-qwP`6$MZxPdIi>^YOqfid#S0=T
+z-j}SU%jGZN#kIUV1gmSQPd@mM^a1?NBx#d2g}$6U`}Xb2*=Nr`_kQ~Wz#zT~A%b`i
+zQz1;_Oe1D+wh>1$+lXUG1ktPLToC<=zSw|scuB*{A?V8IyrLJ>@k$7<;<X@NSIip<
+z;7tui2<@2HkPM*{DGf4&eRxY9X$=dCn(DZy;gW`ohDCw;A=5J5VF7=%`<y^v)J{o(
+z=D2Ce>HOlnbmolt3?<>XoisA%498S_Nf>Y!%$z_|JZ0DeBes3%v|-1HnU?OUOomR;
+z?)XLHiZPIP&CEdD%(>Loxu#o0^i&zcN)IGl$F$N^He`*o9JTY7D<CGwJ2IEgxCu$V
+zt>}=uoEexcOX=dvRqGP2;mSp6DV<=P&I;Ap_}EfXW?j>^RIr@P$Ye3qCb}grO&M9Q
+zG!2#pTSJyc2{UaOZr&l(-VOB(t(G1eCZfj5N0w(M1@=WN%A2rUnU+qhd(B!Ply%HS
+z!&#n`%L1)6tZ9;Bg03tgcGN_?z;@@eDVFS6tm0RNs%JM$mtjJcQooT(33OG$o|(VM
+zhQzuziUitg88ZCwjbbkfXQ84yHF8%C3nlElla%A8nh3o#LI;(tjz{qr8<QA|kB!bn
+zdLrYqXQm?a3QNOf9S(9DTpf8_(Qy?^I+k%w$J=;E$Gdn>!*w0+;|A}4{g{p9%}h!<
+z0zq#QBPSv{KEO>KAL1hoAM3b<PngW=B$f<5)$y5^(Hh>|f@5D*^P=N(e8CpgoHQL@
+zD!*X47dpl<s$&GB0^2vVMaM~;(lLY+0*w{#N}y$ZpE+-(Mpr3|Rq}ytd=izy*|nDy
+zRxqQ3Glxzau2H-Zz6j3psBKvc#3I<o^6)F?HASr4k!mq_NYarETM@gX5~1>$>T*dY
+z^R7Ibmky^i8r`@Wx@$lFfF+k)Z+USN8<=sq_^!<{syB{WRud|__F5hj)tz0=F=vLe
+z^U9%UZ`uPhG**$Nv8WJ@Y*t!)TK!wfp)`&$HIH^V{kCY$WLs-Q<P>BTm$5dffopwt
+zbmBpQ>yjBer>>kEA(78!xpZ@q1?;GVTOD=}u{m4JfJ<}EF_IGd`D2MdkOCo6zFwXO
+z$PJJR(z>3z5I^(7hsSx=d%_^Pc<Mz1Jb@^wKsS15MQ3pfep&+Gg?;f~;a@>OV5+Zo
+z1$915_phK{;Cp_AwG{+?I3DN^H>@D!!;!jQ(D*y_^LNn{-c~^K&H#@BS_;@+p$Svi
+zUROYCQFG`1k9~jRK;H`51nywhG`Y4i*GP1Q($W9t9R#QP3fLijVtP6jxP{trjr-;%
+zsh{utYyN=!UYWya=DCerGc8-thV9scFiUO4ljJ7pA<;pMPNFo^cc<rl8$0kVc6;r4
+z9vbb3(ThF==ye$VILLOjVUFEB<mGUK@~7Ce+q4*@g-<oD)KEXZ!PE2=I703)g7?s-
+z;Ta7_H5~g7iMWRL`)EQy!@jb-9fF7UFT{w3&H#>k7Z)Q2S5xU`kC3W3KK7ydTK9W-
+zcNDdyEY#O9p7o}IJ8nIO|A%!LT@S(F0)1#6y_;a1#+ZjOz6Fd!55j0UMU3Z47=x55
+ztA?K5zp%4_N7h4CPJ2TUiU1><0_@rvz)4O>4S?MR>{;K`+5khfGa$g;Eo4A_aXKdO
+If=4I+2i8wlQvd(}
+
+diff --git target/classes/dao/Dao.class target/classes/dao/Dao.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..8ffa4099006e9d85341dbd81eb09adea7d4af2d9
+GIT binary patch
+literal 447
+zc${sH%}T>S6ot?2PtwM}S}neTBpb7EXKJA$Zc=EVS-BfKLr57KsT09h>!J_fLrHHs
+zP>RXGF!#H2&bjyZZ@UBVh>?pM7q<i_Q)a3)Vdw|5mG~B6X>uLT@-Gt+`ineU3sY_s
+z;jShar)e}{mCG3~KS@lu_pL;Wbr#M)R%&UYpx)wOKTYB&-~fUrl~zXCgi%w%JI}BN
+zuAK5y3d0Nae74(&wvdwWJWikL?j&w#PMVhT7Dc&Ps<&KM>93-As6;$liXvnr4F0<u
+t0-=TKbUVBUI?P?B793_5y(9OTJ)9l+ocZG9|C0IYl=<3ffa}9M+ykgPV>SQ)
+
+diff --git target/classes/dao/Book.class target/classes/dao/Book.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a3cd36534e8e9acd566746881577a67b36ac3b8
+GIT binary patch
+literal 888
+zc${^R%TB^j5QhKL3x!fe5%GfeO9Gh4!llNACMG0AO)%~YG<XzSLyJ%4LKBIJ3m?FT
+zGS0LpvDD4XnK}PI^PThg_5K0i0J|nqSkFMm28T@!TL!ib><H+A40?`0zHw_m+O?kT
+zc5BU`FWv5;fFe5rqArkmu)EHwH*f=i)RA;$a4evfE7t<rsn;QYt|49Ld~n}#`d4-<
+zn&`Fd-nHGAT#uSsa3g&Iv(d4=+KK1g(Ux@A39cfFLb;N}k@kNT^W{kaW9T%b-U*?I
+zSNEezE7$qbqRY$i3oQRnX*Rt<zwMk!o}Xc;eO_U~!juIAX$u*c7P2r2<p*3~W(;!C
+zx^>zCHtA<m^yexR_R&dUYnZcPHXwK`#c8T)lm%tI`Ude5%5oG_VN=BnMJp0u7J147
+zb0|!hU!gq5%x0o_9>tOQnA8fZt9wHz<JD%^ohDB%oKTEZqX~TCck$u{EGB@cPce{u
+zBFGY!CqPO=sBw@Yc^3Ww;g99Tr9==d4zipGvXTs<#X;7{v;GfAb_B8-de*)HnBH+X
+
+diff --git target/classes/dao/C3P0DataSource.class target/classes/dao/C3P0DataSource.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..6489ed7245a4d0094877b1600e6e31486631655a
+GIT binary patch
+literal 1179
+zc$|$>TT|0e5dKbENC|<K0)mQi5w$Ja&=wTR#X<`sTC`GN#>X^0Q-Wzy(}3t7@>O&u
+z%;=0iz(3@h<DL}TVSLb+{dV{4?b}U${QCMGKo;9FMiB4AFcLCCNJ^L!7!Tutz=vU^
+z1gc@o3rvTR5ttQXL5M{m9!YpCV+czUmL=pELVB~-VwfxGc0+CGN19dV>S;#Rv(0(6
+zU^l9E*|tqyD{8J*u}>VGuQ2qk8kXU%GX&#_L#k1*Yn&lcGA#b$q*3M0zE(BK6D!%e
+zW*%yeA?!<M$UQQs<4CEd*=iwMp1)Fhpw8WbZCPA*4clTEiziCQ+Nq|t-kNInfg<It
+zGo3eu(UL%RcvUwq$70lGrkz&hn$=Rvj@{&r`~Hx-b|+1AtGJr}W>;%o&L+3#*fxYQ
+ze08{#sHb2I;|fM`O~GwUG9><cZw#ZhQ%^PRmRol?(Mc5@<CHrJR<Xt~dt9sPx$bLD
+zRZX$IBl6@H7qS_3V{cEvx`+*KIIe;xLX}D7jr8(TI<Fv)H3b{kR8SD2h)ss6f2~2m
+z7RKpTf1iUP>L;5-PJLNDrqvUP&NV8pN}VDMgDvj12^CDOMF$>@m%7;%*D<X6iuhV&
+z3VcRf4;+(0BIBUN9fp3=%9Qxdc4{;YSvz!0Lo>x5E5--$<-~VH0nusKu)2QVp`CRd
+zktTI>{oC$4n$9szzs(5!M$}#0j<g`@bV`!f$x;a!VNdb`?3|PUZjkKtoqf1TQfUWZ
+z0=Il0U7w;v@}&O)NS_h#5d7r#>84L$ie!lNX@oJ;>FH6rc;ESk(CZ8Id_jN;#Ckoy
+zP%P}BPoV6fU!dY)fKc)<NYLXULJ*~>=tqQ~Cq2Z@eR_Gi{SeU;17v7wkWa<{Vi+V}
+yga(KrNmiOxvP4VC(?A7UNs-p^lp_9cEz-z$FiX~5pKstN3KE6{k9+=t?*9ftItB6o
+
+diff --git target/classes/jpa/entity/Student_.class target/classes/jpa/entity/Student_.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..bef8c5e533f42b07f3588f22e0131c4ad09468c8
+GIT binary patch
+literal 846
+zc$}?L%Sr<=6g}x{w6?a^XMHT(`9NpkvLc9}2%~}{6<3l@Lrs~<lr$0jELVaHKfsR?
+z?~GQvC_cbNZgS3joqNg4>(euU9jp|Q#iD~H2g?jj5G%t2!{B;de#`INp3r^SH$nx%
+zjfCM*+!mqhOVzO<*Zan3*|J777{-0sQQTN97_R=7z3X**+!e}5bMN}bw&~dz<__Lv
+zHTI}ap`&Bl>oaVA+r%SkSf2m;=pW@AB??k8c@c3LGF<-4z*NEwx#|$5Ddm0KU8$tm
+zW5}+pHyLsVRFR?LNhMBg)DrrFw?blSUL5eS$+b-I2bnWBk~TFvqTMysF8Z<6fjE>&
+zY<b|=PINHT&n+cHqAB~5itQ^E8*XH*sNmN3<0f&z$p9y7y5*sz9y6onE}@J`hUpO+
+z8LD4PIcs%AV6ch|eOb^sMh<z<iU?)k5FW$$CoU4681k3s#gbNJE5x`d2J#z^U=L|X
+gm24p;OPES+8h{$6Q~ykAXE8_j1o`IaECi^(0Ui_d5&!@I
+
+diff --git target/classes/jpa/entity/TextMessage_.class target/classes/jpa/entity/TextMessage_.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..12a62f9340dabe20b55a3b17d87a86f7cffa933e
+GIT binary patch
+literal 742
+zc$}?L%Sr<=6g|;CwAS}qSMF5MEL>Iu6$GKWu+oi)+)l4!WSWsoBKldb1Q&jQA0^%y
+z6^c+naFLswd(R^i=I#CE6~GQwYZ%5-70XquC{!r;o75@j<}KaRgT7;znas0|Sohdd
+zFYR)oTgJvAA-C_nGo9eMp)lGqu_YfID_s0dz1zIKBhA(u|ESOT!JlxJQOu3PMki!r
+z-4d>i8+(#e@<Nd<6NSR%zh(t*5`9Ps+b+2xt+H#Z@p}rx>l<xJJrrMs$)>S<8hRae
+z=hR80Gt*2XO4{U1j=!2Ee`7L*<pH5r;$Lf}!9{#za{hGxa67+|h|huud)zje5z~EZ
+zQ%~NcR*biP|M;92oqS^nE8kNRBxh;RE7UQDy29ds`--w}azGg$cXM$4c!f0#$*%-i
+z$0(r;c{)Kus0tqWfk*prO-?G0l{zjRU0|TR`3&_`P$r~Sie?RyQtO`tOkuj1&lGhQ
+ObFz=gY+lwvgvAd`_sy07
+
+diff --git target/classes/jpa/entity/Contact.class target/classes/jpa/entity/Contact.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..62896b6742415cfe6a6aa56fcc7fd87a586b0e17
+GIT binary patch
+literal 1824
+zc$|e)U2hXd6g^`*yNPR)kUFN21kAUS0EW`imTzM~3Nqm%Q6$=jYO<b$A@;1hyGG<c
+z@lYfXQY*nD5<d#KcXpGQ%_1H=Gdpwcx#!%u<By;Idk5emZWl3z%Py{r;%X5&TpPnE
+zuJdq%hnp^%E^Y}FjO;0a$@Vk(TsFGWY&4dmK%0##0@IHNCel5%XrAj(uXR<^7(bGc
+z_Dv`-(eC=aHGi|Q<eQ~Iw@U$exj|fFQNRtOK}VTLpwfQUmknC#Xp5-rE<q0_+^ZSP
+zGgi!tMqdS?4kKke)p%gkicbTDx}FR@*`Z8FGJvi4aAm8{*nG3y78qGqk@r+!HUoc`
+zj}mmD-Td>3z~KzoJztxa-yQS};fjg7zjcQU25Mae4C=&yC0o%PpE*~x(b09%QJ-5S
+z{+7?O$J^Sdr9p2^1uK%wbNPKwc2{Mf`8(MxL{D{?Dqzbuk@UEL)%xBmTjV6=WkPJ;
+zmwij)q9t%5eUT4kKq4a*d{uXMLq)OpN_{S?A>42qFqM&=lRHGw<R&1))CNwNd=~0f
+zTak{Jw>zWCNwRvQ7!IKh)U!aAY}p?Kp1P~KSf!*g=UA4&p^PiMV=1`zG7fFA=xluZ
+zYQ31Rgu^&OEwSsCd;KAG16A+N3s3dAcml`y9o2ML>&akKb!x^pXAL21YlDcldCgpB
+zN+{xo682%dgbD1YyWe}g<a%iHmJHP*Ytrjm^z71g$5DFEWAy0r^vsDHR1ErZXfD&7
+z<5YY0C^M}mX?>EuexzUJF9?MxRB=GzCmh5frVBBRnGmy-LU1K$tWi*dW<m4F{9A}u
+zmhou957Kgs#!?Kxah#x;gE<oi|3gaiG|zJI!UvT9NAAgF{w)gc=NH}(=gb>8udJb6
+z(xN4;#eoSauVTZzVw*XfqV)vCXY!VJG3w$ppVsMD&L!@*$2rU=igxY1#>l@ZJEaUe
+z!^IR>z?p>Tk-Y?<l3^?DsBC$wF@DEUC2@4hqQyQd-4#2z&f;8#Xy;{0^u%{XH*h{7
+zx=b^RaOS6z!Vfd;ACl?p$aIpfN~ybmpZ9dgYq;r>PGxq;Mf{Qk?<%6gxoJh!Zzzg;
+XI)`5^{*vu(Zi(M${vG_cf<L|hyP{#3
+
+diff --git target/classes/jpa/entity/BaseIdentify.class target/classes/jpa/entity/BaseIdentify.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..3fda57668c51c0ad76eada8be7b58c3bba7c90e8
+GIT binary patch
+literal 691
+zc$|GvO;6iE5PfT$1VZ>o+6Gd-RKx)|;6rbvszfWbvJ^lnA@_|v4I7!Y<y|B4pSU1V
+zRqCNXpg*eWtdm0pp_iR~Gw;pJ)BOJP^A~`(*r~(E#scQBS;JNh+X9}71w<&&`C4eJ
+zuBoq#8YFb0b!w$msWt-b?nvIq+aROdC}T-S6om1y!0wE~7t)kVOL1Q&1u<#fSciw>
+z|MGcKZ=5;4e{$J77pT5hTG<Z*bNdH<&VEW`5?JXfO=rdRfbyQ?Jq23bG?GbQ=E~t|
+z(zjQN7w>dOnGA@H*>Uhu8VX|vzKwZIWk@!R%l2%)VkXGn58br-MOx$$eO9hn^IzqW
+zb0Dxc!^x@4GKwz>&P9nd=D2|+EH_X=RbcIzO$1h5ry!Af7@QAA6j}cbU&!Z+@p+t>
+zV~tUh(LBcm#&yCX8cY*z1ivd>2sjFkmBSwp_x$m&%5Swy)>#jhlmxW!qU`??ubzk>
+v;N3kEH)o35SeuI9G23(O!;SCo9*=I7>h^>&RlDEBnuqn0-ziPH%xmB;=%R|V
+
+diff --git target/classes/jpa/entity/Group_.class target/classes/jpa/entity/Group_.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..ba1ddd48ff1cd48de2333db655385f62ea0d7cdf
+GIT binary patch
+literal 872
+zc$}?LO-~y!6dXfBLJ~^(Dy2XrZa@V-a126%O06PoIdn^|$k~|1XxAHgZB%|%Pe?uV
+z2k@g1&knRvgAhm@{IoNkoj32vH@Cn40NBIF1}3pu!&(jN4E4S<!m2_u@aRHZil2NS
+zO{q#Nbs~8#t;mbM%y_JH>M~&ttu?CWtZXw($12srIwKjnFZ+8xx)=y9wN>_te>H_0
+zw1WZ9gid)!TbWAJKJZOae|s!)YI5?LO=42%H1wzrj7rGAURu{DeaZ0Y$yO0jqnn7I
+zuYNStKPDa~2(hO2l~(qEVRCb;%TW1DZVa=L((>5lJ!yW3UPjD(R3swn3Zp!}CoA?`
+z(Hsk7?M}(L5f{!R@{97y=8)d?BQUIdcO=ebSCxv44z(_9cp+rA^Ys3`F8TI={a!Cc
+z=0d=+nOk^+S%$f>bPVrDxFb=@j$ep6yE?@NCg|}36?EuSK`SCOfg0iZ2%aX~`0u`n
+z)?YkBU(5%f`j!|TFi_pT2KyBxb5y4S*~C26)=+>2EQb4~P~TxWC@3_Yl>{H|03K}j
+AN&o-=
+
+diff --git target/classes/jpa/entity/TextMessage.class target/classes/jpa/entity/TextMessage.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..d4576798ee419b787445d9fdef2d71193b6f18cd
+GIT binary patch
+literal 1573
+zc$|GxYflqV5ItKSeYntCC@)d*0k*uV0zP<J5R?Se*oMR}CYSbFmTY&M-CF|xN)s)K
+zCjJ0_lyPQv1+pwO>7BXvo|!pw?(CnxKYs(5!*&W;EX46Fg%}nRc+U1k3ODgGfkn1U
+z2`sZ+;hWV2*4VyE(n*PzbzU~&cpb;4hHlYP2ezXjyK^XxM9~yhy;xR`Vbzy3bSinQ
+z$hguX)9*uC$}o!?!jx7`I0PF0*s_$-kb8z}?3=P=S+)|&uq{`^s26fvY)Z#9TqUil
+zELLQrX*<HC(5@q4wxou!Yhaa=rX*;xvc0=mu9S8^5b0&ZGSsSuj(lN{=xx|FN|N3&
+zEcve0*q2U45E1Ult_pKcI0o;7!%lTz5VN73!=@-wUxqrNTE}Wvx~`~msf4n91*qkG
+zAxf8IU8+(bT+%)FbNS0?W*8@Y#gj7bo_Tau_H-TiUnHz7gMG+gJ_^C9Q)Rp5ROObz
+zy=5*mGRpxPMk1u$^t$G!i_)EC;<vX%gHpyDemWhuafgV6`&(}rW=&G>eHUuy{i#~f
+zv4uA}CNNHkrpI`i=&TTId8%kTg=xmU)u0u0JjA$;KJ@Fz@iKrx5-9qqn9cdcx^U%o
+zjW=ITc&?jG5=p~M)RSB~3c6Sd;ot8c%Bs2sk9+hnW$DB0pg*w&|8ky<F?Z0Qk>5jh
+znEoRYw=jwXxuhnocj>Z7RwLUrc?#{D7db|2w|Ce>6#(4_;65IZ)mWq;_%osTZvGcy
+zpH9({?QBz`HoD1V<G!C@Kk56aHg05f^4sY78mgsVs5O69YvQcdInnRv4F{(qi9SL;
+z2wo&~jM0-*KhPU)Gvh@M_=q5yJ(iS<79vTc!zB75NlZqQNQX)EUqK=lkf1@0Adv}^
+m7>pz_gV`t&nJ|f=D@gdm6r<9Nf9#D_n!G1upVG~oi}`<{TrEZb
+
+diff --git target/classes/jpa/specification/Specification.class target/classes/jpa/specification/Specification.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9b10ec0da47f70322655ed9b237fde23f842c7d
+GIT binary patch
+literal 463
+zc$_=+Z`VEs1_omW9(D#Ub_Q-n2JVvlfTGlt%;dz9R7QqU4WF#UvcwAgg4Cko%;J*N
+zyyR5<<f6=y)S}Ep{h<8(5^H=4oS_V-(#)Kc)FNw5e2U@LS~D_m24|+{C6<&H0o_nV
+z&<!>rA=Y-ZafpUZh!t3^eokUuy1su>R%&vIwH>AqBLi1(erZv1s#|6b(9uG{1*yrI
+zX&_@V^YipT${88tvkDURi;*StQIs(<2%wwG#>l|Pz{CIoj4X@{%nU3*J}Z#N#J~o`
+M5EeTF2bksr00yX(4*&oF
+
+diff --git target/classes/jpa/entity/Group.class target/classes/jpa/entity/Group.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d27fe4166cb5b3b068765250f0ba66103980d96
+GIT binary patch
+literal 2473
+zc$|e)+fo}x5bZ&Cv0yC8V2nl9m)JrCl*Epc7)&g%z)FM+NFhb?kXocc9wY54d!elV
+z$Y<mst_np}T$Mb!Dj$`kdv?7N%Tj*OOi$~~>C>0lfByaRF93J|-={%=Y68AZ!x&Uk
+zFb>}(pq7N~G{m4z=NGi>(6XC=y#zEEq&lYI^y^xWGsx6lX(w8#tLdFm!#0K9Sz$1@
+z=jgWR@v43zEOFT7WnDLH%@&4kF_@}#jozVgT&f#--RXAmLbC0c@^1#L${^M^MGMK3
+zmhH5;Zp%wDj$?~%sU|ENFQpoyqieQfBJy6~@73C?zE;Ak!XBV5$+EJBmu5X_`ys;S
+zCCTejpPLqPaJ|J#+nPRT8noi&*b%o|FB#-RfSdGJbI|9Ai`L3N9-#c5*6;K7`hY=P
+zmJDOWSA{O@H3pHw!agE5j5f-@QWH9_JH110HZ_z*bv0UAcV9CFojqsNekm+j^I>vZ
+zM2s<K3Ku(3tx}AMhOM=Zx3#`xNkEgq-C%=uG!xrtbMst5ln%GIhP}=e7Q(u%Sm#jJ
+zLWGcvaU^@@w;9vNMvq&gzGy+}O(JmT{Q&qTU2pi~ka;g<bRY^BoR^LP1s<|x3qdl{
+zF@3%T*jld*3qklLVTdH%FdVbRHw9fx%Q7v~Wd=7whNvPbXiP)?l+kIrbXn)LIO-Wc
+z%ei8phTy3k?OlhPf?G7aCtBCx;ZyEIDYoLO#Cn&zUA*@T`LVB!O0BZdR6FYC-ivKj
+zg47PaOc#D6be!~hnWQ}og{nV1uk2OS&a(gcP@kxe{euD@fr`BtmbPq~+JNe-Kn|{<
+z^5I<3cVov8I!<imb&L1i0V)icg{Ag1^O(0)-O!hGgsX>+O>VL&){+7fFsZ;*$S9D7
+z3}zC1R`{w$T<e;}tJGR?G$3$b$l(@#BNhCrM)6aM%z)1tPjTF*a37;U7kt?eALfed
+zw6tg7I_`v-#nTNAb8r*#7R*B$eONGDZy{n0B4`0j70-Yb-@@3z8AMJY`bM(c#+5$s
+zfC{5{x`USD;^8iQj5~4NLj-aCid<3LmjYai?_lCB#11m?Gf4bhTs(zj@#ZO{iuqGW
+zQ=o_pG>JRWQ=lujQ?Q~-=mjIoEf85$mN98jF(Pmu?W@54gFHkNFrI({Bj5u5vJtOH
+z=hq@EdeTdHB5<tu2PA*@bB{}Bb|mkZCuOwq3_d{-F3~OuAyK)Iq=%`xygA7`?c)6u
+zb6$$~C7Mmj1QN`TwTxmficb9&5PkiFqCbVtJfg?AlZbe64%_l3z%)A|Gw#cbdt(_;
+z_j#zgbWmOXgX$iHt4jyf&0nG}8>a3dd=a898f^IO5OwaedW60&;VX}%<||wDp3G=_
+z?_8pco+*Q`{RrflLCcLm*{(=yRX*WI$oWJ*R0iKz@D$2utp5aKPhkT==z0bf3pV}Z
+I79F4e4}1^jK>z>%
+
+diff --git target/classes/jpa/repository/Repository.class target/classes/jpa/repository/Repository.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..2d66fac3eb46ab215d3dd194472a2e4b1621bbe6
+GIT binary patch
+literal 616
+zc$}4yO;5rw7{{L?Zh|l16wxnW=EWYk5J3_>c!9*lE#B)^mtwOmTW7*o<G=^-Lm8hA
+zoyc~vNz?xR{XZ{lKR%Z$02siz31=qs3GA>SAkedCbN0@tWKl>TU*_CbqpN2EEmwpQ
+zQ+dh>7`EpXqLC*7Q(6hQ<a%S;o--}Z%#f@5h4V(>vMyy+!W!#fOpX~b{7y;&mi_I`
+zm5_8MGVSbF#4$!q@Wd+0x(WBitMHi;aYSH%9VCoqn=1X|8PyaS{y*xci`%hxQ@x=x
+ztq~`6FVS}6JoWj5kocyZC!WNaP;t7r)?NY^y05fU>92u6cRQUyfItKEFq-(y&_v!v
+lY7}g4@!kfvklV0d@&WQ89F^Qb?!s}&7S8qV1Wt>!_XV0ho3H=?
+
+diff --git target/classes/jpa/entity/Student.class target/classes/jpa/entity/Student.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd10f83d9f89df029e90cb0ecab0735fca424bd0
+GIT binary patch
+literal 2344
+zc$|$@T~i!I6g|y;Z<c^$116AUV`8#^$;59Bh`<U64j;*`DEeSEOJ`}=?b(`{rC1;Q
+zO;TlwDpRG8R{4{BP;d7R%P>qVAGZ5;&*^i|y?ti(&%b~D4Z!>OHjgV<&tM~u0j%ec
+z$7TjwSv<=lh39%*)k7_VuQS+YNQoAgO@<NsfFE(I$yLLu`mR)s8HVxa9p%fGSXD>T
+zle<l^pp@ftUpmTT7`B^EYu7onHXOClX*TIVrtT=8*L{YfebDBXpyPhms`PdVa3f&c
+zj^Udy5{|95a6ReyLe+(}sYK18!Ekf0&i4evofu%H_psJ&Yiwe{wi&W5-foM%#V#H8
+z{LUV!VMsSzr_(m_O~oBwHZ7ZI=vb~Q8;biKmy+C%Je~~~w4ym?=IF@n7%l5ub!(0u
+z36Odr{Q5q_tr+04eiTSf+6&+9#KYDcscM|srD2M<NZnvi&kv>=hARhzsW{C}OLsC(
+z)LI`vEcvtJa*wWFsv`o5wJ=525S!=eS*fHyM_nyXl4Ft;M_<B_EtS~lw04DSv}p@D
+zb>7_OuGH&bGwJV3FJgykFFEPBUcPKQonx>{emPv{ZNrkmH*_CSFK%&{THy=#f{C&X
+z;V<<pT`W(=nL6wB5qSbv&Kx_c;c=eLdm+?VIS!;X=ZI`2@Ycv#>ae>WT-tn%r*hso
+z)3tJxNaq^8*lKc6(C&v(cx(zyk*_)(w=R~YK2`{><gq@?a5Kg~ONN5fP1}y!utdEn
+z+n%@p;pZ1Y?_+)6_|+$I4A%cYboM?}H<xQ<K5^WZZa0C{PxG|t$sa`m_zMM0Vv5>x
+zUhRVG@~$qqfE&0;FTwfU>#x%mxtq+gbX*s0osAr2K7A$Wm0H|A6niD*s7H#RrQMFN
+zw{@)ZJSkAR!2*Wy23_rCBa<san~U5Nt9o0$pbyV*)PcAQ{fPz=^noT?FkGcon&u&z
+z2Xq#SM<~8d^EKKjeh(&SHHtA0Z_)<UN8`AGPZ;PNMYk?MZwuT(iLxc|mWO+|PfzCY
+zHc`^@0Um~zWn?L!hSE4~*b)>0!&9eVQ?D?vbBe@EBu`AncWBiAE+FwqO7V!ILJyC}
+zuxQp?PY9v8d{ZcJFTyqb2L@juwKI}FMdtUZ>6gf!n67C0t2FCT(+|<CQ;ha#f)qOH
+zb?;q@hrs^P^=FXJ;63w42xM5$Q-%-lVIao>Gg4DizaaZ_zn-+&91Ycy3KE4chvB1s
+zUC)BLivL+ik9RCoK(SvyF;oEc`)XA5$M__;kFe-mRP=a^XogSmG&uZ}&^mEiOUs=^
+zPEUlSrTfy-feRUCFdNgkWK={cMnun_pV8hNJ`YIju$W}DPj_D<M*E#%zMnzwOi<Lz
+hut2{>6IIN+Fiz1IG%peNvcL+y#Of;6@YO2pe*xzj2N(bV
+
+diff --git target/classes/jpa/entity/Contact_.class target/classes/jpa/entity/Contact_.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..d5b8e8554233c0f60015c97f3020d498d88c95ca
+GIT binary patch
+literal 809
+zc$}@0&q~8U5XQf?t+BCM|5aP{;!Oq3!DEY{f>4MatW-V8Hm-3?vMHNgv5)0R@ZbaZ
+zP~s%D&_fXf4?D>>JM;Z!ll}a9{{V1=Z5IVJ9Bew+VsKJpAA~Xtp5N!s{KXpxoyyb*
+z6$mdDhR4Z+h`f$ep^dmcF-FUtHKNH-?#NJaW3^zo`&)O*?+>^~Txo{hS)vRNOmi~V
+z8I9FECQecDm=HJrf*=bo;wmJ9rj{H~;34_n{;z*q84(Jd17=%NNpno3-Muay=!`5G
+zs=id>(#AcZuX!(`%!;1`JnC{SGyRh+nkShu)TZ$6$=mHDRtMr-X0;3Bjl*mZhQ^hp
+zhFElED#`3bsl;$26Gesxzn?d&3ogc*K&59MSz@eBJ9q^ZEHJE2nUSGBkv-+9XlK7x
+zJ`V4(gBiMwpw&hZCD5lLH3NtA+=MQZb|>^ay|D~Qagj1!u7T428`x`JQl&VXCtWO2
+Ztc(h<jFo(UHIHkk(KEAKr?nBF{tX4{<-h;{
+
+diff --git target/classes/jpa/repository/GroupRepository.class target/classes/jpa/repository/GroupRepository.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd3405957126adf80d387911d0a40832456e2263
+GIT binary patch
+literal 5884
+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
+be*@7wINY3pW1AZ2Zo&ZN4jU<?<=gl#TD%1~
+
+diff --git target/classes/jpa/repository/StudentRepository.class target/classes/jpa/repository/StudentRepository.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a85d2c7a7bc840dd6b58d1d5002a5d841a740d9
+GIT binary patch
+literal 3264
+zc$}4%Yg5}s6o%iGFDjNuxHP6TDFi~OF&C#Hg_c_b4z#3(5S)_UTVXFo#7G`VZo|K7
+zXWDe!51oGQxBj6{&q}g<LB?hnR@&Y7JbU)+o+JPB-=BX0ScI9tFt++Igsg%m*cQ!>
+zXg-zknSxzBRq#1-3ihxs-kyoM0|n1<C?lUByBDJQLNrIBc`4&d8DGixnn6C-46Vd1
+zhKbyn_LKHHQ{k4a+YUDhJhN>$x^uDTNmd!+Yr3I38w^vauIia1hG^C-a)z5Z-QfGx
+z^J8wk(2mPAGL$n5TKPz`bkX+*qt2;rGfd{rDq6<k71P!o)4IsyoobOA&S5Y@o<y`_
+zkzpj|YPq{`UFWVW+g^v^?Jx;#rCKR!4y_t5@-i1MNpDY?vSySryN1K-yO4FS!!R78
+zp!pJawk{4{G0cP_IygX9o8>aaA~oY#RUN&Y$x$?EwlA-j49%%p<XGyGU@Z)}L1sg)
+zEBOj9=qGwXb9B>SSoES~H;-moG^-&V^xLhJiLMYj=z^s?oDOxXs+Wr*Vsjz)q%O*2
+zTh(IG`rPv>w=Njcy_maNGLBlN>4ab8z~+!7BD@9DDC*wErmxZ;SiC6q$H^$!dTB2z
+z^^5zsXD>S*+;TUkJ6i5u|8zUDrkn5Yv*R;faO%d*LkzdVgp?{rmxtT4xsk@9ZiFO|
+z@GOxxt5$*U=px?9OBG>3Sg9DnH!5x+DdSre-(f?=_gGi)1Ae5`xV)GQvN=XUMo|UF
+ziHwqpQ|Kzr@Jh^-Wt^)pkY*UX<d=%~ky3FFQz|Agu3`-140pQ~FNT5k7%_}?3=);P
+zl!)wjmwHQO$e&|~opY<iy=stc&&UP8n)IBL>E6{0O2OikEq?m0H(!%%S+nico))iX
+zbgEY^CI5+Ko-;hU=8Aqj81Irov@ypFY5_wv?EBXWy-tv?bg{Vv#eP2J;**fSa{cYs
+z6^q+;BlUX>_tPt>t?DqaD2c^7?9Ns5RO#t%9&)={c0@(O1pO`<27RsRUlJ)yKYbK>
+zAHh4+j#6)j#wB_t(tm)ZXMczEEA=G2OYIFrs2xBQgAhNIZc{Jmsc{GI0q&ciGWw%D
+z^_f|psic2{G+RSNLIav`r;_v>X#y$%P{CbtTL32m;1eIH`oO4!m+i#cE~7zI1ELxb
+zsi^qG4_#}3H863S0tp)k79bezW7<Vfaq<yMZcNFV{nEy`-^7pth7>Snkfxqs%(?wA
+zM%rbl-mK4<b>D@}JQjSyzjQ`%dTxr))DUCXn;VMPAWPVv7cXx~Sc%S#M(1kii(n--
+zKN_ncK>-v7^ED_EYET)30}<DOG04<rD6S9Cj}PbqJ*4Fy(Z-jk_mS(^hPP<2xlPhP
+zAjc9|Ce1@~ZkSwLB&!H1rYPP^bd6Hv@-h)(_}CASr&<YAtEBR_xi+v#!Cv=+z3AV7
+zzVz(h=zoJ7?eXewidUcK76I;&qv3#??FSzYm<$KR-(a9Oz*tAXU=IMA_oDF$9=p%Y
+F{{b_jFtY#v
+
+diff --git target/classes/jpa/entity/BaseIdentify_.class target/classes/jpa/entity/BaseIdentify_.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..5e9f9220e8da650fd5666f61edf5cbcf1570365e
+GIT binary patch
+literal 594
+zc$}3{%Sr<=6g}zFKD4#IT6gYL&@5cG6sjN;Mg=R~iDag6Oqt1)Os3e+awWL%1N<oQ
+z&Zvls3NCVzbMMVLH#cwZFRuVj(5@nntunUD*kQ=22?KYgVlE!}Oqy85R%%c3P+Ad2
+z6B+Q4(tZ*MGqBbuH?gwIP#Gy-3!50paQna8J!d)-TxzTAf}e_54kszOUvx7a9tiF8
+zp|;YOrrRg4Qcr1R`waR0gE2$ljC2_qj?(fn30-M!gd0$#<wTwc#=@wSe+3KnLB$Na
+z%S`XcpgM{Y<H>WCsr<?wr!6sbt`p*+9IIH7>_F?t3acVb(no(kKdtjFzB#!S=OReR
+zsIznqb*!Mm&|cOuL-S`+SMF4Lwy=jBeJj8)L;*$GOT=<0(}|^egjI_0j045PXRxQN
+hq()fEf)&&W>z@T!#afncWZ1+y?KR4^Xl;1d`~dxZq1*rf
+
+diff --git target/classes/base/JDBCLesson.class target/classes/base/JDBCLesson.class
+new file mode 100644
+index 0000000000000000000000000000000000000000..cfe3fc5d02c2e6a02195d1c175d5ed68655ab7be
+GIT binary patch
+literal 4060
+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
+
